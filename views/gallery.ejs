@@ -88,7 +88,14 @@
       <% const hasRootFolders=!currentFolder && folders && folders.length> 0;
         const galleryItemCount = (videos ? videos.length : 0) + (hasRootFolders ? folders.length : 0);
         const hasGalleryItems = galleryItemCount > 0;
+        const galleryThumbnailCount = (videos || []).filter(video => /\.(jpe?g|png|gif)$/i.test(video.filepath || '')).length;
+        const galleryUsedLiveThumbnailCount = (videos || []).filter(video => Number(video.thumbnail_used_live) === 1).length;
         %>
+
+        <div class="grid grid-cols-2 gap-3 mb-4 max-w-md">
+          <div class="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3"><div class="text-xs text-gray-400">Total Thumbnails</div><div id="totalThumbnailCount" class="mt-1 text-lg font-semibold text-violet-300"><%= galleryThumbnailCount %></div></div>
+          <div class="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3"><div class="text-xs text-gray-400">Used Live</div><div id="usedLiveThumbnailCount" class="mt-1 text-lg font-semibold text-green-300"><%= galleryUsedLiveThumbnailCount %></div></div>
+        </div>
 
         <div class="bg-gray-800 rounded-lg shadow-md overflow-hidden">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between p-4 border-b border-gray-700 gap-4">
@@ -104,6 +111,7 @@
                 <option value="video">Video</option>
                 <option value="audio">Audio</option>
                 <option value="image">Thumbnail</option>
+                <option value="used-live">Used Live</option>
               </select>
               <select id="sortSelect"
                 class="bg-dark-700 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary">
@@ -1706,7 +1714,7 @@
           return `
       <div class="gallery-grid-item file-item gallery-playable group bg-dark-700 rounded-lg overflow-hidden border border-transparent hover:border-gray-600 hover:bg-dark-600 transition-all cursor-pointer relative"
         data-id="${escapeHtml(video.id)}" data-kind="file" data-title="${title}" data-date="${escapeHtml(video.upload_date || video.created_at || '')}" data-size="${Number(video.file_size || 0)}" data-type="${mediaType}"
-        data-media-type="${mediaType}" data-media-title="${title}" draggable="true">
+        data-media-type="${mediaType}" data-media-title="${title}" data-used-live="${video.thumbnail_used_live ? '1' : '0'}" draggable="true">
         <div class="absolute top-3 left-3 z-10">
           <label class="inline-flex items-center gap-2 cursor-pointer" onclick="event.stopPropagation()">
             <input type="checkbox" class="gallery-select-checkbox opacity-0 absolute" data-item-id="${escapeHtml(video.id)}">
@@ -1788,7 +1796,7 @@
           return `
       <tr class="gallery-list-item file-item-row gallery-playable group hover:bg-dark-700 transition-colors cursor-pointer"
         data-id="${escapeHtml(video.id)}" data-kind="file" data-title="${title}" data-date="${escapeHtml(video.upload_date || video.created_at || '')}" data-size="${Number(video.file_size || 0)}" data-type="${mediaType}"
-        data-media-type="${mediaType}" data-media-title="${title}" draggable="true">
+        data-media-type="${mediaType}" data-media-title="${title}" data-used-live="${video.thumbnail_used_live ? '1' : '0'}" draggable="true">
         <td class="px-4 py-3">
           <div class="flex items-center gap-3">
             <label class="inline-flex items-center gap-2 cursor-pointer" onclick="event.stopPropagation()">
@@ -2057,6 +2065,7 @@
           const content = document.getElementById('galleryContent');
           const paginationBar = document.getElementById('galleryPaginationBar');
           if (!content) return;
+          updateThumbnailLiveStats();
 
           const hasRootFolders = !currentFolderId && galleryFoldersState.length > 0;
           const totalItems = galleryVideosState.length + (hasRootFolders ? galleryFoldersState.length : 0);
@@ -2136,8 +2145,18 @@
             date: new Date(item.dataset.date || 0).getTime(),
             size: parseInt(item.dataset.size) || 0,
             type: item.dataset.type || 'video',
-            kind: item.dataset.kind || 'file'
+            kind: item.dataset.kind || 'file',
+            usedLive: item.dataset.usedLive === '1'
           };
+        }
+
+        function updateThumbnailLiveStats() {
+          const thumbnails = galleryVideosState.filter(video => isImageMediaItem(video));
+          const usedLive = thumbnails.filter(video => Number(video.thumbnail_used_live) === 1);
+          const totalEl = document.getElementById('totalThumbnailCount');
+          const usedEl = document.getElementById('usedLiveThumbnailCount');
+          if (totalEl) totalEl.textContent = thumbnails.length;
+          if (usedEl) usedEl.textContent = usedLive.length;
         }
 
         function filterAndSort() {
@@ -2151,7 +2170,7 @@
             const matchesSearch = data.title.toLowerCase().includes(search);
             const matchesType = data.kind === 'folder'
               ? type === 'all'
-              : type === 'all' || data.type === type;
+              : type === 'all' || (type === 'used-live' ? data.usedLive : data.type === type);
             return matchesSearch && matchesType;
           };
 
