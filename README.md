@@ -12,6 +12,14 @@
 
 **StreamFlow Custom** adalah aplikasi live streaming berbasis web yang dibangun dari StreamFlow dan disesuaikan untuk kebutuhan operasional channel YouTube. Fitur asli StreamFlow tetap digunakan, lalu ditambahkan New Rotations, Gallery workflow, dan otomatisasi media untuk kebutuhan live harian.
 
+> # DISCLAIMER / ATRIBUSI
+>
+> ## Aplikasi ini sama dengan StreamFlow, hanya diubah dan disesuaikan dengan kebutuhan.
+>
+> ## Seluruh sumber, fondasi, dan kredit original adalah milik StreamFlow.
+>
+> Versi ini hanya menambahkan atau menyesuaikan fitur untuk kebutuhan penggunaan sendiri. Kredit source project tetap untuk [Bang Tutorial / StreamFlow](https://github.com/bangtutorial/streamflow), dan ketentuan lisensi proyek sumber tetap berlaku.
+
 [🚀 Installation](#-quick-installation) • [📖 Documentation](#-manual-installation) • [🐳 Docker](#-docker-deployment) • [🪛 Troubleshooting](#-troubleshooting) • [💬 Community](https://github.com/bangtutorial/streamflow/discussions)
 
 ![screenshot](https://github.com/user-attachments/assets/fef1c0a5-04f6-41ae-8ea1-5eb1fff13a22)
