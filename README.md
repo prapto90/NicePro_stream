@@ -10,7 +10,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/bangtutorial/streamflow?style=social)](https://github.com/bangtutorial/streamflow/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/bangtutorial/streamflow?style=social)](https://github.com/bangtutorial/streamflow/network/members)
 
-**StreamFlow** adalah platform live streaming berbasis web yang powerful dan mudah digunakan. Streaming ke YouTube, Facebook, dan platform RTMP lainnya secara bersamaan dengan satu aplikasi. Dilengkapi dengan video management, scheduled streaming, dan real-time monitoring untuk pengalaman streaming yang profesional.
+**StreamFlow Custom** adalah aplikasi live streaming berbasis web yang dibangun dari StreamFlow dan disesuaikan untuk kebutuhan operasional channel YouTube. Fitur asli StreamFlow tetap digunakan, lalu ditambahkan New Rotations, Gallery workflow, dan otomatisasi media untuk kebutuhan live harian.
 
 [🚀 Installation](#-quick-installation) • [📖 Documentation](#-manual-installation) • [🐳 Docker](#-docker-deployment) • [🪛 Troubleshooting](#-troubleshooting) • [💬 Community](https://github.com/bangtutorial/streamflow/discussions)
 
@@ -32,6 +32,58 @@
 - **Real-time Monitoring** - Monitor status streaming dengan dashboard real-time
 - **Video Analytics** - Pantau statistik dan performa video langsung dari aplikasi
 - **Responsive UI** - Antarmuka modern yang responsif di semua perangkat
+
+## New Rotations — Live Harian dengan Metadata Berganti
+
+New Rotations adalah fitur tambahan untuk menjalankan satu sumber video atau playlist secara berulang, sambil mengganti **judul** dan **thumbnail** pada setiap jadwal live. Description, tags, privacy, category, channel, dan pengaturan lainnya tetap mengikuti konfigurasi Rotation.
+
+### Cara membuat New Rotation
+
+1. Buat kategori dan beberapa judul melalui **Title Warehouse**.
+2. Siapkan folder Gallery yang hanya berisi gambar untuk thumbnail.
+3. Klik **New Rotation**, pilih YouTube Channel, sumber Video/Playlist, Title Warehouse, dan folder thumbnail.
+4. Atur Start Time, End Time, serta Repeat: Every Day, Every Week, atau Every Month.
+5. Untuk Every Week, tambahkan beberapa kombinasi hari dan jam bila diperlukan.
+6. Klik Save. Media otomatis masuk status **Preparing Media**.
+7. Setelah status menjadi **Ready to Start**, klik Start.
+
+### Rotation Ready Media
+
+Saat New Rotation dibuat, aplikasi otomatis membuat versi media **Rotation Ready** agar live lebih stabil:
+
+- Resolusi: 1280×720 (720p)
+- Frame rate: 30 FPS
+- Video bitrate: 4000 Kbps CBR
+- Audio: AAC 128 Kbps
+
+Proses encoding hanya berlangsung saat Rotation dibuat, di-sync, atau saat memilih **Rebuild 4000**. FFmpeg tidak melakukan encode ulang saat live sedang berjalan. File asli Gallery tetap disimpan; file Rotation Ready dipakai otomatis untuk New Rotation.
+
+### Judul dan Thumbnail
+
+- Tanpa mencentang **Do not reuse**, sistem selalu memilih judul dan thumbnail yang belum pernah dipakai live terlebih dahulu. Setelah semua pernah dipakai, sistem mulai berputar ulang.
+- Dengan mencentang **Do not reuse**, judul atau thumbnail yang sudah live tidak dipakai lagi. Rotation akan selesai jika stok salah satu metadata habis.
+
+### Playlist, Sync, dan Hasil Live
+
+- **Source Video / Playlist** adalah sumber media lokal dari Gallery/Playlist aplikasi.
+- Pilihan **Add completed live to YouTube Playlist** menambahkan hasil live ke playlist YouTube yang dipilih setelah live selesai.
+- Jika isi playlist sumber berubah, gunakan **Sync / Refresh Media** dari menu Actions. Sistem hanya meng-encode video baru dan membersihkan hasil encode video yang sudah dihapus dari playlist.
+
+### Menu Actions
+
+Tombol utama adalah Start (atau Stop ketika aktif). Klik menu titik-tiga untuk membuka View, Edit, Rebuild 4000, Sync/Refresh Media bila tersedia, dan Delete. Edit hanya tersedia setelah Rotation dihentikan.
+
+### Restart PM2 saat Live
+
+Live baru menggunakan managed FFmpeg. Saat menjalankan `pm2 restart streamflow`, aplikasi akan mencoba memulihkan proses FFmpeg yang masih valid menggunakan PID dan token proses, sehingga live tidak perlu terputus karena restart aplikasi. Ini **tidak** melindungi live dari reboot seluruh VPS, karena FFmpeg ikut mati saat sistem operasi reboot.
+
+> Saat deployment pertama fitur managed FFmpeg, tunggu live lama selesai dahulu. Live yang dibuat sebelum fitur ini belum memiliki token pemulihan.
+
+## Atribusi StreamFlow
+
+Aplikasi ini menggunakan **StreamFlow** sebagai sumber dan fondasi utama. Seluruh kredit atas source/original project tetap milik pembuat StreamFlow: [Bang Tutorial / StreamFlow](https://github.com/bangtutorial/streamflow).
+
+Versi ini hanya merupakan penyesuaian untuk kebutuhan sendiri, termasuk New Rotations, pengelolaan Title Warehouse, thumbnail Gallery, Rotation Ready Media, Google Drive folder import, dan workflow live YouTube. Ketentuan lisensi proyek sumber tetap berlaku.
 
 ## 💻 System Requirements
 
