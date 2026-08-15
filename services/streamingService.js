@@ -247,6 +247,34 @@ async function persistManagedProcess(streamId, pid, token) {
   });
 }
 
+function launchManagedFFmpeg(ffmpegArgs) {
+  const launcherPath = path.join(__dirname, 'ffmpegManagedLauncher.js');
+  return new Promise((resolve, reject) => {
+    const launcher = spawn(process.execPath, [launcherPath], {
+      detached: false,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    let output = '';
+    let errorOutput = '';
+    launcher.stdout.on('data', chunk => { output += chunk.toString(); });
+    launcher.stderr.on('data', chunk => { errorOutput += chunk.toString(); });
+    launcher.on('error', reject);
+    launcher.on('close', code => {
+      if (code !== 0) return reject(new Error(errorOutput.trim() || 'Managed FFmpeg launcher failed'));
+      try {
+        const result = JSON.parse(output.trim());
+        if (!Number.isInteger(Number(result.pid)) || Number(result.pid) <= 0) {
+          throw new Error('Managed FFmpeg launcher did not return a PID');
+        }
+        resolve(Number(result.pid));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    launcher.stdin.end(JSON.stringify({ ffmpegPath, args: ffmpegArgs }));
+  });
+}
+
 function runFFprobe(filePath) {
   return new Promise((resolve, reject) => {
     const ffprobeProcess = spawn(ffprobePath, [
@@ -888,14 +916,11 @@ async function startStream(streamId, isRetry = false, baseUrl = null) {
 
     addStreamLog(streamId, `Starting managed FFmpeg process`);
 
-    const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs, {
-      // Detached on Linux means PM2 may exit and replace Node without taking
-      // down the encoder. stdio is deliberately ignored so FFmpeg is not
-      // coupled to pipes that disappear during the restart.
-      detached: process.platform === 'linux',
-      stdio: 'ignore'
-    });
-    ffmpegProcess.unref();
+    // The short-lived launcher exits after it creates FFmpeg. This prevents
+    // PM2 from seeing FFmpeg as a child of the Node process and tree-killing
+    // it during `pm2 restart`.
+    const managedFfmpegPid = await launchManagedFFmpeg(ffmpegArgs);
+    const ffmpegProcess = null;
 
     let startTimeIso;
     if (isRetry && originalStartTime) {
@@ -909,12 +934,13 @@ async function startStream(streamId, isRetry = false, baseUrl = null) {
       userId: stream.user_id,
       startTime: startTimeIso,
       endTime: originalEndTime,
-      pid: ffmpegProcess.pid,
+      pid: managedFfmpegPid,
       token: processToken,
       lastActivity: Date.now()
     });
-    await persistManagedProcess(streamId, ffmpegProcess.pid, processToken);
+    await persistManagedProcess(streamId, managedFfmpegPid, processToken);
 
+    if (ffmpegProcess) {
     ffmpegProcess.on('exit', async (code, signal) => {
       addStreamLog(streamId, `FFmpeg exited: code=${code}, signal=${signal}`);
 
@@ -1014,11 +1040,12 @@ async function startStream(streamId, isRetry = false, baseUrl = null) {
       } catch (e) { }
       cleanupStreamData(streamId);
     });
+    }
 
     // Give an immediate failure a chance to surface without tying FFmpeg to
     // this Node process through stdout/stderr pipes.
     await wait(1200);
-    if (!verifyManagedFFmpeg(ffmpegProcess.pid, processToken).valid) {
+    if (!verifyManagedFFmpeg(managedFfmpegPid, processToken).valid) {
       manuallyStoppingStreams.add(streamId);
       await killFFmpegProcess(streamId, activeStreams.get(streamId));
       manuallyStoppingStreams.delete(streamId);
