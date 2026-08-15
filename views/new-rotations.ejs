@@ -1,0 +1,268 @@
+<% layout('layout') -%>
+<% const formatRotationTime = value => value && value.includes('T') ? value.split('T')[1].slice(0, 5) : '--';
+const repeatLabel = rotation => {
+  if (rotation.repeat_mode === 'weekly') {
+    const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const days = String(rotation.repeat_days || '').split(',').map(Number).filter(Number.isInteger).map(day => names[day]).filter(Boolean);
+    return `Every Week${days.length ? ` · ${days.join(', ')}` : ''}`;
+  }
+  return rotation.repeat_mode === 'monthly' ? 'Every Month' : 'Every Day';
+}; %>
+
+<div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+  <div>
+    <h2 class="text-2xl font-bold">New Rotations</h2>
+    <p class="text-gray-400 text-sm mt-1">Media is automatically prepared at 720p / 30 FPS / 4000 Kbps when a New Rotation is created.</p>
+  </div>
+  <% if (youtubeConnected) { %>
+  <div class="flex gap-2 w-full md:w-auto">
+    <a href="/new-rotation-title-warehouse" class="flex-1 md:flex-none inline-flex justify-center items-center gap-2 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors"><i class="ti ti-folder"></i>Title Warehouse</a>
+    <button onclick="openRotationModal()" class="flex-1 md:flex-none inline-flex justify-center items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-blue-600 text-white transition-colors"><i class="ti ti-plus"></i>New Rotation</button>
+  </div>
+  <% } %>
+</div>
+
+<% if (!youtubeConnected) { %>
+<div class="bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-6"><div class="flex items-center gap-4"><i class="ti ti-brand-youtube text-yellow-400 text-3xl"></i><div><h3 class="font-medium text-yellow-200">YouTube Connection Required</h3><a href="/settings?activeTab=integration" class="text-sm text-yellow-400 hover:underline">Connect a YouTube channel in Settings</a></div></div></div>
+<% } else { %>
+<div class="bg-blue-900/20 border border-blue-600/30 rounded-lg p-4 mb-6 flex gap-3 text-sm text-blue-100"><i class="ti ti-info-circle text-xl text-blue-400"></i><p><strong>How it works:</strong> select one video or playlist and your fixed description/tags. On every next daily slot, only the title from the warehouse and thumbnail from Gallery change.</p></div>
+<% const preparingRotations = rotations.filter(rotation => ['pending', 'processing'].includes(rotation.preparation_status)); const readyRotations = rotations.filter(rotation => rotation.preparation_status === 'ready'); const failedRotations = rotations.filter(rotation => rotation.preparation_status === 'failed'); %>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+  <div class="bg-gray-800 border border-gray-700 rounded-lg p-3"><div class="text-xs text-gray-400">Preparing Media</div><div class="text-lg text-yellow-400 font-semibold"><%= preparingRotations.length %></div><div class="text-xs text-gray-500 truncate"><%= preparingRotations.map(rotation => rotation.name).join(', ') || 'None' %></div></div>
+  <div class="bg-gray-800 border border-gray-700 rounded-lg p-3"><div class="text-xs text-gray-400">Ready to Start</div><div class="text-lg text-green-400 font-semibold"><%= readyRotations.length %></div><div class="text-xs text-gray-500 truncate"><%= readyRotations.map(rotation => rotation.name).join(', ') || 'None' %></div></div>
+  <div class="bg-gray-800 border border-gray-700 rounded-lg p-3"><div class="text-xs text-gray-400">Preparation Failed</div><div class="text-lg text-red-400 font-semibold"><%= failedRotations.length %></div><div class="text-xs text-gray-500 truncate"><%= failedRotations.map(rotation => rotation.name).join(', ') || 'None' %></div></div>
+</div>
+
+<% if (rotations.length) { %>
+<div class="hidden md:block bg-gray-800 rounded-lg shadow-md overflow-hidden">
+  <div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-700"><thead class="bg-dark-700"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Rotation</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Current Item</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Schedule</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Repeat</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Status</th><th class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Actions</th></tr></thead>
+  <tbody class="divide-y divide-gray-700"><% rotations.forEach(rotation => { const itemNumber = Number(rotation.current_title_index || 0) + 1; %><tr class="hover:bg-dark-700/50"><td class="px-6 py-4"><div class="font-medium text-white"><%= rotation.name %></div><div class="text-xs text-gray-400 mt-1"><%= rotation.youtube_channel_name || 'Default YouTube channel' %> · <%= rotation.thumbnail_count %> thumbnails</div></td><td class="px-6 py-4"><div class="text-sm text-gray-200">Title <%= itemNumber %>/<%= rotation.title_count || 0 %></div><div class="text-xs text-gray-500"><%= rotation.live_count || 0 %> kali live</div></td><td class="px-6 py-4 text-sm"><span class="text-yellow-500"><%= formatRotationTime(rotation.start_time) %></span><span class="text-gray-500 px-1">→</span><span class="text-green-500"><%= formatRotationTime(rotation.end_time) %></span></td><td class="px-6 py-4 text-xs text-blue-300"><%= repeatLabel(rotation) %></td><td class="px-6 py-4"><span class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full <%= rotation.status === 'active' ? 'bg-green-500/15 text-green-400' : 'bg-gray-700 text-gray-300' %>"><span class="w-1.5 h-1.5 rounded-full <%= rotation.status === 'active' ? 'bg-green-400 animate-pulse' : 'bg-gray-400' %>"></span><%= rotation.status === 'active' ? 'Active' : 'Inactive' %></span></td><td class="px-6 py-4 text-right whitespace-nowrap"><button onclick="viewRotation('<%= rotation.id %>')" class="px-2.5 py-1.5 text-xs rounded border border-gray-600 text-gray-200 hover:bg-gray-700"><i class="ti ti-eye"></i> View</button><details class="relative inline-block ml-2 text-left"><summary class="list-none cursor-pointer px-2.5 py-1.5 text-xs rounded border border-gray-600 text-gray-300 hover:bg-gray-700"><i class="ti ti-dots-vertical"></i></summary><div class="absolute right-0 z-40 mt-1 w-44 rounded-lg border border-gray-600 bg-gray-800 p-1 shadow-xl"><% if (rotation.status === 'active') { %><button onclick="rotationAction('<%= rotation.id %>', 'stop')" class="w-full px-3 py-2 text-left text-xs rounded text-red-300 hover:bg-red-500/15"><i class="ti ti-player-stop mr-2"></i>Stop Rotation</button><% } else { %><button onclick="rotationAction('<%= rotation.id %>', 'activate')" class="w-full px-3 py-2 text-left text-xs rounded text-green-300 hover:bg-green-500/15"><i class="ti ti-player-play mr-2"></i>Start Rotation</button><button onclick="editRotation('<%= rotation.id %>')" class="w-full px-3 py-2 text-left text-xs rounded text-gray-200 hover:bg-gray-700"><i class="ti ti-edit mr-2"></i>Edit</button><% if (rotation.preparation_status === 'needs_sync') { %><button onclick="syncMedia('<%= rotation.id %>')" class="w-full px-3 py-2 text-left text-xs rounded text-blue-300 hover:bg-blue-500/15"><i class="ti ti-refresh mr-2"></i>Sync / Refresh Media</button><% } %><% } %><button onclick="deleteRotation('<%= rotation.id %>')" class="w-full px-3 py-2 text-left text-xs rounded text-red-300 hover:bg-red-500/15"><i class="ti ti-trash mr-2"></i>Delete</button></div></details></td></tr><% }) %></tbody></table></div>
+</div>
+<div class="md:hidden space-y-3"><% rotations.forEach(rotation => { const itemNumber = Number(rotation.current_title_index || 0) + 1; %><div class="bg-gray-800 rounded-lg border border-gray-700 p-4"><div class="flex justify-between gap-3"><div><h3 class="font-medium"><%= rotation.name %></h3><p class="text-xs text-gray-400 mt-1">Title <%= itemNumber %>/<%= rotation.title_count || 0 %> · <%= rotation.live_count || 0 %> kali live</p></div><span class="text-xs h-fit px-2 py-1 rounded <%= rotation.status === 'active' ? 'bg-green-500/15 text-green-400' : 'bg-gray-700' %>"><%= rotation.status %></span></div><p class="text-xs text-gray-500 mt-3"><span class="text-yellow-500"><%= formatRotationTime(rotation.start_time) %></span> → <span class="text-green-500"><%= formatRotationTime(rotation.end_time) %></span> · <span class="text-blue-300"><%= repeatLabel(rotation) %></span></p><div class="mt-4 flex gap-2"><button onclick="viewRotation('<%= rotation.id %>')" class="flex-1 py-2 text-xs border border-gray-600 rounded text-gray-200"><i class="ti ti-eye"></i> View</button><details class="relative"><summary class="list-none cursor-pointer px-3 py-2 text-xs border border-gray-600 rounded text-gray-300"><i class="ti ti-dots-vertical"></i></summary><div class="absolute right-0 z-40 mt-1 w-48 rounded-lg border border-gray-600 bg-gray-800 p-1 shadow-xl"><% if (rotation.status === 'active') { %><button onclick="rotationAction('<%= rotation.id %>', 'stop')" class="w-full px-3 py-2 text-left text-xs rounded text-red-300 hover:bg-red-500/15"><i class="ti ti-player-stop mr-2"></i>Stop Rotation</button><% } else { %><button onclick="rotationAction('<%= rotation.id %>', 'activate')" class="w-full px-3 py-2 text-left text-xs rounded text-green-300 hover:bg-green-500/15"><i class="ti ti-player-play mr-2"></i>Start Rotation</button><button onclick="editRotation('<%= rotation.id %>')" class="w-full px-3 py-2 text-left text-xs rounded text-gray-200 hover:bg-gray-700"><i class="ti ti-edit mr-2"></i>Edit</button><% if (rotation.preparation_status === 'needs_sync') { %><button onclick="syncMedia('<%= rotation.id %>')" class="w-full px-3 py-2 text-left text-xs rounded text-blue-300 hover:bg-blue-500/15"><i class="ti ti-refresh mr-2"></i>Sync / Refresh Media</button><% } %><% } %><button onclick="deleteRotation('<%= rotation.id %>')" class="w-full px-3 py-2 text-left text-xs rounded text-red-300 hover:bg-red-500/15"><i class="ti ti-trash mr-2"></i>Delete</button></div></details></div></div><% }) %></div>
+<% } else { %>
+<div class="bg-gray-800 rounded-lg border border-gray-700 p-10 text-center"><div class="w-14 h-14 mx-auto rounded-full bg-primary/15 text-primary flex items-center justify-center"><i class="ti ti-repeat text-3xl"></i></div><h3 class="mt-4 font-medium">No New Rotations Yet</h3><p class="mt-1 text-sm text-gray-400">Create a title warehouse, then create your first daily rotation.</p><button onclick="openWarehouseModal()" class="mt-4 text-sm text-primary hover:underline">Open Title Warehouse</button></div>
+<% } %>
+<% } %>
+
+<div id="warehouseModal" class="hidden fixed inset-0 z-50 bg-black/70 p-4 overflow-y-auto"><div class="bg-gray-800 max-w-2xl mx-auto my-8 rounded-xl border border-gray-700 shadow-2xl"><div class="flex justify-between items-center p-5 border-b border-gray-700"><div><h3 class="font-semibold text-lg">Title Warehouse</h3><p class="text-xs text-gray-400 mt-1">Organize titles by category/channel.</p></div><button onclick="closeModal('warehouseModal')" class="text-gray-400 hover:text-white"><i class="ti ti-x text-xl"></i></button></div><div class="p-5"><button onclick="createCategory()" class="w-full mb-4 py-2 border border-dashed border-primary text-primary rounded-lg hover:bg-primary/10"><i class="ti ti-plus"></i> Add Category</button><div class="space-y-3"><% titleCategories.forEach(category => { %><div class="border border-gray-700 rounded-lg p-4"><div class="flex justify-between items-center"><div><div class="font-medium"><%= category.name %></div><div class="text-xs text-gray-400"><%= category.titles.length %> titles</div></div><button onclick="deleteCategory('<%= category.id %>')" class="text-xs text-red-400 hover:text-red-300">Delete category</button></div><div class="mt-3 space-y-1 max-h-40 overflow-y-auto"><% category.titles.forEach(title => { %><div class="flex justify-between gap-3 bg-dark-700 px-3 py-2 rounded text-xs"><span><%= title.title %></span><button onclick="deleteTitle('<%= title.id %>')" class="text-gray-500 hover:text-red-400">×</button></div><% }) %><% if (!category.titles.length) { %><p class="text-xs text-yellow-400">No titles yet</p><% } %></div><div class="mt-3"><textarea id="bulkTitles-<%= category.id %>" rows="3" class="input" placeholder="Love Afrika&#10;Relaxing Afrika&#10;Romantis Afrika"></textarea><div class="flex items-center justify-between mt-2"><span class="text-xs text-gray-500">Separate each title with a new line or comma.</span><button onclick="addTitles('<%= category.id %>')" class="text-xs px-3 py-1.5 bg-primary hover:bg-blue-600 rounded text-white">Add Titles</button></div></div></div><% }) %><% if (!titleCategories.length) { %><p class="text-center text-gray-500 text-sm py-6">No title categories yet.</p><% } %></div></div></div></div>
+
+<div id="rotationModal" class="hidden fixed inset-0 z-50 bg-black/70 p-4 overflow-y-auto"><div class="bg-gray-800 max-w-3xl mx-auto my-8 rounded-xl border border-gray-700 shadow-2xl"><form id="newRotationForm"><div class="flex justify-between items-center p-5 border-b border-gray-700"><div><h3 id="rotationModalTitle" class="font-semibold text-lg">Create New Rotation</h3><p class="text-xs text-gray-400 mt-1">Fixed stream settings, rotating daily title and thumbnail.</p></div><button type="button" onclick="closeModal('rotationModal')" class="text-gray-400 hover:text-white"><i class="ti ti-x text-xl"></i></button></div><div class="p-5 space-y-4">
+  <div class="grid md:grid-cols-2 gap-4"><label class="text-sm">Rotation Name<input required name="name" class="input" placeholder="e.g. Baladas Daily"></label><label class="text-sm">YouTube Channel<select name="youtube_channel_id" onchange="loadYouTubePlaylists(this.value)" class="input"><option value="">Default channel</option><% youtubeChannels.forEach(channel => { %><option value="<%= channel.id %>"><%= channel.channel_name %></option><% }) %></select></label></div>
+  <label class="text-sm block">Add completed live to YouTube Playlist<select name="youtube_playlist_id" id="youtubePlaylistSelect" class="input"><option value="">Do not add to a playlist</option></select><span class="text-xs text-gray-500">Completed live recording is added automatically after the broadcast ends.</span></label>
+  <div class="grid md:grid-cols-2 gap-4"><div class="relative"><label class="text-sm block">Source Video / Playlist</label><button type="button" onclick="toggleSourceSelector()" class="input flex justify-between items-center text-left"><span id="selectedSourceText" class="text-gray-400">Choose a playlist or video...</span><i class="ti ti-chevron-down text-gray-400"></i></button><input required type="hidden" name="video_id" id="sourceVideoId"><div id="sourceSelector" class="hidden absolute z-30 mt-2 w-full bg-dark-700 border border-gray-600 rounded-lg shadow-xl"><div class="p-2 border-b border-gray-600"><div class="relative"><i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i><input id="sourceSearch" oninput="renderSourceList(this.value)" class="w-full bg-dark-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm" placeholder="Search playlists or videos..."></div></div><div id="sourceList" class="p-2 space-y-1 max-h-64 overflow-y-auto"></div></div></div><label class="text-sm">Title Warehouse<select required name="title_category_id" class="input"><option value="">Select a warehouse</option><% titleCategories.forEach(category => { %><option value="<%= category.id %>" <%= category.titles.length ? '' : 'disabled' %>><%= category.name %> (<%= category.titles.length %> titles)</option><% }) %></select></label></div>
+  <div class="relative"><label class="text-sm block">Thumbnail Folder from Gallery <span class="text-gray-500">(all images in the selected folder are used)</span></label><button type="button" onclick="toggleThumbnailSelector()" class="input flex justify-between items-center text-left"><span id="selectedThumbnailFolderText" class="text-gray-400">Choose a Gallery folder...</span><i class="ti ti-chevron-down text-gray-400"></i></button><input required type="hidden" name="thumbnail_video_ids" id="thumbnailVideoIds"><div id="thumbnailSelector" class="hidden absolute z-30 mt-2 w-full bg-dark-700 border border-gray-600 rounded-lg shadow-xl"><div class="p-2 border-b border-gray-600"><div class="relative"><i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i><input id="thumbnailSearch" oninput="renderThumbnailFolderList(this.value)" class="w-full bg-dark-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm" placeholder="Search Gallery folders..."></div></div><div id="thumbnailFolderList" class="p-2 space-y-1 max-h-64 overflow-y-auto"></div></div></div>
+  <div class="grid md:grid-cols-2 gap-4"><label class="text-sm">Start Time<input required type="time" name="start_time" id="rotationStartTime" onchange="updateDuration()" class="input"></label><div><label class="text-sm block">End Time<input required type="time" name="end_time" id="rotationEndTime" onchange="updateDuration()" class="input"></label><div id="rotationDurationBadge" class="inline-flex mt-2 px-2.5 py-1 rounded bg-primary/15 text-primary text-xs">Duration: 00:00</div></div></div>
+  <div class="grid md:grid-cols-2 gap-4"><label class="text-sm">Repeat<select name="repeat_mode" id="repeatMode" onchange="toggleRepeatDays()" class="input"><option value="daily">Every Day</option><option value="weekly">Every Week</option><option value="monthly">Every Month</option></select></label><div id="repeatDays" class="hidden"><span class="text-sm block mb-2">Play on days</span><div class="flex flex-wrap gap-2 text-xs"><% [['0','Sun'],['1','Mon'],['2','Tue'],['3','Wed'],['4','Thu'],['5','Fri'],['6','Sat']].forEach(day => { %><label class="px-2.5 py-1.5 rounded bg-dark-700 border border-gray-600 cursor-pointer hover:border-primary"><input type="checkbox" name="repeat_days" value="<%= day[0] %>" class="mr-1"><%= day[1] %></label><% }) %></div></div></div>
+  <label class="text-sm block">Description<textarea name="description" rows="3" class="input"></textarea></label><label class="text-sm block">Tags<textarea name="tags" rows="3" class="input" placeholder="music, live, relaxing, ..."></textarea><span class="text-xs text-gray-500">Separate tags with commas.</span></label><div class="grid md:grid-cols-2 gap-4"><label class="text-sm">Privacy<select name="privacy" class="input"><option value="unlisted">Unlisted</option><option value="public">Public</option><option value="private">Private</option></select></label><label class="text-sm">YouTube Category<select name="category" class="input"><option value="22">People &amp; Blogs</option><option value="20">Gaming</option><option value="24">Entertainment</option><option value="10">Music</option><option value="28">Science &amp; Technology</option><option value="17">Sports</option><option value="27">Education</option></select></label></div><div class="grid md:grid-cols-2 gap-4"><label class="flex items-start gap-2 text-sm p-3 bg-dark-700 rounded border border-gray-600"><input type="checkbox" name="disable_used_titles" value="true" class="mt-0.5"><span><strong>Do not reuse titles</strong><small class="block text-gray-400 mt-1">Used titles are disabled for this rotation.</small></span></label><label class="flex items-start gap-2 text-sm p-3 bg-dark-700 rounded border border-gray-600"><input type="checkbox" name="disable_used_thumbnails" value="true" class="mt-0.5"><span><strong>Do not reuse thumbnails</strong><small class="block text-gray-400 mt-1">Used Gallery images are disabled for this rotation.</small></span></label></div><label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="youtube_monetization" value="true"> Enable monetization</label>
+</div><div class="p-5 border-t border-gray-700 flex justify-end gap-3"><button type="button" onclick="closeModal('rotationModal')" class="px-4 py-2 text-sm text-gray-300">Cancel</button><button id="rotationSubmitButton" class="px-4 py-2 bg-primary hover:bg-blue-600 rounded-lg text-sm text-white">Save Rotation</button></div></form></div></div>
+
+<div id="rotationViewModal" class="hidden fixed inset-0 z-50 bg-black/70 p-4 overflow-y-auto"><div class="bg-gray-800 max-w-3xl mx-auto my-8 rounded-xl border border-gray-700 shadow-2xl"><div class="flex justify-between items-center p-5 border-b border-gray-700"><div><h3 class="font-semibold text-lg">New Rotation Details</h3><p class="text-xs text-gray-400 mt-1">View-only. Stop the Rotation first if you need to edit it.</p></div><button onclick="closeModal('rotationViewModal')" class="text-gray-400 hover:text-white"><i class="ti ti-x text-xl"></i></button></div><div id="rotationViewContent" class="p-5"></div><div class="p-5 border-t border-gray-700 flex justify-end"><button type="button" onclick="closeModal('rotationViewModal')" class="px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-lg">Close</button></div></div></div>
+
+<style>
+.input{display:block;width:100%;margin-top:.35rem;padding:.55rem .75rem;background:#1f2937;border:1px solid #4b5563;border-radius:.375rem;color:#fff}.input:focus{outline:none;border-color:#0055ff;box-shadow:0 0 0 1px #0055ff}
+.rotation-action-dropdown{position:relative;display:inline-block;vertical-align:middle}.rotation-action-dropdown summary{list-style:none}.rotation-action-dropdown summary::-webkit-details-marker{display:none}.rotation-action-menu,details.relative>div.absolute{position:absolute;top:calc(100% + .35rem);right:0;z-index:60;display:flex;flex-direction:column;gap:.15rem;width:11rem;padding:.25rem;border:1px solid #4b5563;border-radius:.5rem;background:#1f2937;box-shadow:0 12px 24px rgba(0,0,0,.4)}.rotation-action-menu button,details.relative>div.absolute button{display:block;width:100%;white-space:nowrap}
+</style>
+<% if (typeof preparingRotations !== 'undefined' && preparingRotations.length) { %><script>setTimeout(() => location.reload(), 15000);</script><% } %>
+<script>
+const csrfToken = '<%= csrfToken %>';
+const sourcePlaylists = <%- JSON.stringify(playlists || []) %>;
+const sourceVideos = <%- JSON.stringify(sourceVideos || []) %>;
+const thumbnailFolders = <%- JSON.stringify(thumbnailFolders || []) %>;
+let selectedThumbnailIds = [];
+let editingRotationId = null;
+let weeklySlots = [];
+async function api(url, options = {}) { const response = await fetch(url, {headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken, ...(options.headers || {})}, ...options}); const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.error || 'Request failed'); return data; }
+async function syncMedia(id){try{await api(`/api/new-rotations/${id}/sync-media`,{method:'POST'});location.reload()}catch(error){alert(error.message)}}
+async function rebuildReadyMedia(id){if(!confirm('Rebuild Rotation Ready media to 720p / 30 FPS / 4000 Kbps? This uses CPU once.'))return;try{await api(`/api/new-rotations/${id}/rebuild-ready-media`,{method:'POST'});location.reload()}catch(error){alert(error.message)}}
+async function viewRotation(id){try{const {rotation}=await api(`/api/new-rotations/${id}`);const sourceId=String(rotation.video_id||''),isPlaylist=sourceId.startsWith('playlist:'),source=isPlaylist?sourcePlaylists.find(item=>`playlist:${item.id}`===sourceId):sourceVideos.find(item=>item.id===sourceId),category=(<%- JSON.stringify(titleCategories || []) %>).find(item=>item.id===rotation.title_category_id),channel=(<%- JSON.stringify(youtubeChannels || []) %>).find(item=>item.id===rotation.youtube_channel_id),folderId=rotation.thumbnails?.[0]?.folder_id,folder=thumbnailFolders.find(item=>item.id===folderId),days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],repeat=rotation.repeat_mode==='weekly'?`Every Week · ${String(rotation.repeat_days||'').split(',').map(Number).filter(Number.isInteger).map(day=>days[day]).filter(Boolean).join(', ')||'No days selected'}`:rotation.repeat_mode==='monthly'?'Every Month':'Every Day',time=value=>String(value||'').includes('T')?value.split('T')[1].slice(0,5):'--',sourceLabel=isPlaylist?`Playlist: ${source?.name||sourceId.slice(9)}`:(source?.title||sourceId),thumbLabel=folder?`${folder.name} (${rotation.thumbnails?.length||0} images)`:`${rotation.thumbnails?.length||0} images`,yesNo=value=>value?'Yes':'No';document.getElementById('rotationViewContent').innerHTML=`<div class="grid md:grid-cols-2 gap-4 text-sm"><div class="bg-dark-700 rounded-lg p-4"><div class="text-xs text-gray-400">Rotation Name</div><div class="font-medium mt-1">${escapeHtml(rotation.name)}</div></div><div class="bg-dark-700 rounded-lg p-4"><div class="text-xs text-gray-400">Status</div><div class="font-medium mt-1 capitalize">${escapeHtml(rotation.status||'inactive')}</div><div class="text-xs text-gray-400 mt-1">${rotation.live_count||0} kali live · Media: ${escapeHtml(rotation.preparation_status||'--')}</div></div><div class="bg-dark-700 rounded-lg p-4"><div class="text-xs text-gray-400">Source Video / Playlist</div><div class="font-medium mt-1 break-words">${escapeHtml(sourceLabel)}</div></div><div class="bg-dark-700 rounded-lg p-4"><div class="text-xs text-gray-400">Thumbnail Gallery Folder</div><div class="font-medium mt-1">${escapeHtml(thumbLabel)}</div></div><div class="bg-dark-700 rounded-lg p-4"><div class="text-xs text-gray-400">Title Warehouse</div><div class="font-medium mt-1">${escapeHtml(category?.name||rotation.title_category_id||'--')}</div></div><div class="bg-dark-700 rounded-lg p-4"><div class="text-xs text-gray-400">YouTube Channel</div><div class="font-medium mt-1">${escapeHtml(channel?.channel_name||'Default channel')}</div><div class="text-xs text-gray-400 mt-1">Completed live playlist: ${escapeHtml(rotation.youtube_playlist_id||'Not selected')}</div></div><div class="bg-dark-700 rounded-lg p-4"><div class="text-xs text-gray-400">Schedule</div><div class="font-medium mt-1">${time(rotation.start_time)} → ${time(rotation.end_time)}</div><div class="text-xs text-blue-300 mt-1">${escapeHtml(repeat)}</div></div><div class="bg-dark-700 rounded-lg p-4"><div class="text-xs text-gray-400">YouTube Settings</div><div class="font-medium mt-1 capitalize">${escapeHtml(rotation.privacy||'unlisted')} · Category ${escapeHtml(rotation.category||'22')}</div><div class="text-xs text-gray-400 mt-1">Monetization: ${yesNo(rotation.youtube_monetization)}</div></div></div><div class="mt-4 grid md:grid-cols-2 gap-4 text-sm"><div><div class="text-xs text-gray-400 mb-1">Description</div><div class="bg-dark-700 rounded-lg p-3 whitespace-pre-wrap break-words min-h-12">${escapeHtml(rotation.description||'--')}</div></div><div><div class="text-xs text-gray-400 mb-1">Tags</div><div class="bg-dark-700 rounded-lg p-3 whitespace-pre-wrap break-words min-h-12">${escapeHtml(rotation.tags||'--')}</div></div></div><div class="mt-4 text-xs text-gray-400">Do not reuse titles: <span class="text-gray-200">${yesNo(rotation.disable_used_titles)}</span> · Do not reuse thumbnails: <span class="text-gray-200">${yesNo(rotation.disable_used_thumbnails)}</span></div>`;document.getElementById('rotationViewModal').classList.remove('hidden')}catch(error){alert(error.message)}}
+async function loadYouTubePlaylists(channelId, selectedId=''){const select=document.getElementById('youtubePlaylistSelect');select.innerHTML='<option value="">Do not add to a playlist</option>';if(!channelId)return;select.innerHTML+='<option disabled>Loading playlists...</option>';try{const {playlists}=await api(`/api/new-rotations/youtube-playlists/${channelId}`);select.innerHTML='<option value="">Do not add to a playlist</option>'+playlists.map(item=>`<option value="${item.id}">${escapeHtml(item.title)} (${item.itemCount} videos)</option>`).join('');select.value=selectedId}catch(error){select.innerHTML='<option value="">Could not load playlists</option>';alert(error.message)}}
+function openWarehouseModal(){document.getElementById('warehouseModal').classList.remove('hidden')} function openRotationModal(){editingRotationId=null;const form=document.getElementById('newRotationForm');form.reset();selectedThumbnailIds=[];document.getElementById('sourceVideoId').value='';document.getElementById('thumbnailVideoIds').value='';document.getElementById('selectedSourceText').textContent='Choose a playlist or video...';document.getElementById('selectedThumbnailFolderText').textContent='Choose a Gallery folder...';document.getElementById('selectedSourceText').classList.add('text-gray-400');document.getElementById('selectedThumbnailFolderText').classList.add('text-gray-400');document.getElementById('rotationModalTitle').textContent='Create New Rotation';document.getElementById('rotationSubmitButton').textContent='Save Rotation';document.getElementById('rotationModal').classList.remove('hidden');renderSourceList();renderThumbnailFolderList();updateDuration()} function closeModal(id){document.getElementById(id).classList.add('hidden')} function toggleRepeatDays(){document.getElementById('repeatDays').classList.toggle('hidden',document.getElementById('repeatMode').value!=='weekly')} function updateDuration(){const start=document.getElementById('rotationStartTime').value,end=document.getElementById('rotationEndTime').value,badge=document.getElementById('rotationDurationBadge');if(!start||!end){badge.textContent='Duration: 00:00';return}let [sh,sm]=start.split(':').map(Number),[eh,em]=end.split(':').map(Number),minutes=(eh*60+em)-(sh*60+sm);if(minutes<=0)minutes+=1440;badge.textContent=`Duration: ${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`}
+function escapeHtml(value){const node=document.createElement('div');node.textContent=value||'';return node.innerHTML} function toggleSourceSelector(){const el=document.getElementById('sourceSelector');el.classList.toggle('hidden');if(!el.classList.contains('hidden'))document.getElementById('sourceSearch').focus()} function renderSourceList(filter=''){const term=filter.toLowerCase(),list=document.getElementById('sourceList'),playlists=sourcePlaylists.filter(item=>item.name.toLowerCase().includes(term)),videos=sourceVideos.filter(item=>item.title.toLowerCase().includes(term));let html='';if(playlists.length){html+='<p class="text-xs text-gray-400 px-2 py-1 font-medium">Playlists</p>'+playlists.map(item=>`<button type="button" class="source-option w-full flex items-center gap-3 p-2 text-left rounded hover:bg-dark-600" data-id="playlist:${item.id}" data-name="${escapeHtml(item.name)}"><span class="w-10 h-8 flex items-center justify-center rounded bg-primary/20 text-primary"><i class="ti ti-playlist"></i></span><span class="min-w-0"><span class="block text-sm truncate">${escapeHtml(item.name)}</span><span class="block text-xs text-gray-500">${item.video_count||0} videos</span></span></button>`).join('')}if(videos.length){html+=(playlists.length?'<div class="border-t border-gray-600 my-2"></div>':'')+'<p class="text-xs text-gray-400 px-2 py-1 font-medium">Gallery Videos</p>'+videos.map(item=>`<button type="button" class="source-option w-full flex items-center gap-3 p-2 text-left rounded hover:bg-dark-600" data-id="${item.id}" data-name="${escapeHtml(item.title)}"><span class="w-10 h-8 flex items-center justify-center rounded bg-gray-800 text-gray-400"><i class="ti ti-video"></i></span><span class="min-w-0"><span class="block text-sm truncate">${escapeHtml(item.title)}</span><span class="block text-xs text-gray-500">${escapeHtml(item.format||'video')}</span></span></button>`).join('')}list.innerHTML=html||'<p class="p-4 text-center text-sm text-gray-500">No playlists or videos found</p>';list.querySelectorAll('.source-option').forEach(option=>option.onclick=()=>{document.getElementById('sourceVideoId').value=option.dataset.id;document.getElementById('selectedSourceText').textContent=option.dataset.id.startsWith('playlist:')?'[Playlist] '+option.dataset.name:option.dataset.name;document.getElementById('selectedSourceText').classList.remove('text-gray-400');document.getElementById('sourceSelector').classList.add('hidden')})}
+function toggleThumbnailSelector(){const el=document.getElementById('thumbnailSelector');el.classList.toggle('hidden');if(!el.classList.contains('hidden'))document.getElementById('thumbnailSearch').focus()} function renderThumbnailFolderList(filter=''){const term=filter.toLowerCase(),list=document.getElementById('thumbnailFolderList'),folders=thumbnailFolders.filter(folder=>folder.name.toLowerCase().includes(term));list.innerHTML=folders.map(folder=>`<button type="button" class="thumbnail-folder-option w-full flex items-center gap-3 p-2 text-left rounded hover:bg-dark-600" data-id="${folder.id}"><span class="w-10 h-8 flex items-center justify-center rounded bg-primary/20 text-primary"><i class="ti ti-folder"></i></span><span><span class="block text-sm">${escapeHtml(folder.name)}</span><span class="block text-xs text-gray-500">${folder.images.length} images</span></span></button>`).join('')||'<p class="p-4 text-center text-sm text-gray-500">No Gallery folders with images found</p>';list.querySelectorAll('.thumbnail-folder-option').forEach(option=>option.onclick=()=>{const folder=thumbnailFolders.find(item=>item.id===option.dataset.id);selectedThumbnailIds=folder.images.map(image=>image.id);document.getElementById('thumbnailVideoIds').value=selectedThumbnailIds.join(',');document.getElementById('selectedThumbnailFolderText').textContent=`${folder.name} (${selectedThumbnailIds.length} images)`;document.getElementById('selectedThumbnailFolderText').classList.remove('text-gray-400');document.getElementById('thumbnailSelector').classList.add('hidden')})}
+async function createCategory(){const name=prompt('Category / channel name:');if(!name)return;try{await api('/api/new-rotations/categories',{method:'POST',body:JSON.stringify({name})});location.reload()}catch(e){alert(e.message)}} async function addTitles(id){const titles=document.getElementById(`bulkTitles-${id}`).value;if(!titles.trim())return;try{await api(`/api/new-rotations/categories/${id}/titles`,{method:'POST',body:JSON.stringify({titles})});location.reload()}catch(e){alert(e.message)}} async function deleteCategory(id){if(!confirm('Delete this unused category and its titles?'))return;try{await api(`/api/new-rotations/categories/${id}`,{method:'DELETE'});location.reload()}catch(e){alert(e.message)}} async function deleteTitle(id){try{await api(`/api/new-rotations/titles/${id}`,{method:'DELETE'});location.reload()}catch(e){alert(e.message)}} async function rotationAction(id,action){try{await api(`/api/new-rotations/${id}/${action}`,{method:'POST'});location.reload()}catch(e){alert(e.message)}} async function deleteRotation(id){if(!confirm('Delete this New Rotation?'))return;try{await api(`/api/new-rotations/${id}`,{method:'DELETE'});location.reload()}catch(e){alert(e.message)}}
+async function editRotation(id){try{const {rotation}=await api(`/api/new-rotations/${id}`);editingRotationId=id;const form=document.getElementById('newRotationForm');for(const key of ['name','title_category_id','description','tags','privacy','category','youtube_channel_id'])if(form.elements[key])form.elements[key].value=rotation[key]||'';form.elements.repeat_mode.value=rotation.repeat_mode||'daily';[...form.querySelectorAll('[name="repeat_days"]')].forEach(input=>input.checked=String(rotation.repeat_days||'').split(',').includes(input.value));form.elements.disable_used_titles.checked=rotation.disable_used_titles===1;form.elements.disable_used_thumbnails.checked=rotation.disable_used_thumbnails===1;toggleRepeatDays();form.elements.start_time.value=(rotation.start_time||'').slice(11,16);form.elements.end_time.value=(rotation.end_time||'').slice(11,16);form.elements.youtube_monetization.checked=rotation.youtube_monetization===1;await loadYouTubePlaylists(rotation.youtube_channel_id,rotation.youtube_playlist_id||'');document.getElementById('sourceVideoId').value=rotation.video_id;const isPlaylist=rotation.video_id.startsWith('playlist:'),source=isPlaylist?sourcePlaylists.find(item=>`playlist:${item.id}`===rotation.video_id):sourceVideos.find(item=>item.id===rotation.video_id);document.getElementById('selectedSourceText').textContent=isPlaylist?`[Playlist] ${source?.name||rotation.video_id}`:(source?.title||rotation.video_id);document.getElementById('selectedSourceText').classList.remove('text-gray-400');selectedThumbnailIds=rotation.thumbnails.map(item=>item.video_id);document.getElementById('thumbnailVideoIds').value=selectedThumbnailIds.join(',');const folderId=rotation.thumbnails[0]?.folder_id,folder=thumbnailFolders.find(item=>item.id===folderId);document.getElementById('selectedThumbnailFolderText').textContent=folder?`${folder.name} (${selectedThumbnailIds.length} images)`:`${selectedThumbnailIds.length} images selected`;document.getElementById('selectedThumbnailFolderText').classList.remove('text-gray-400');document.getElementById('rotationModalTitle').textContent='Edit New Rotation';document.getElementById('rotationSubmitButton').textContent='Save Changes';document.getElementById('rotationModal').classList.remove('hidden');renderSourceList();renderThumbnailFolderList();updateDuration()}catch(e){alert(e.message)}}
+document.getElementById('newRotationForm')?.addEventListener('submit',async event=>{event.preventDefault();const form=new FormData(event.target);const payload=Object.fromEntries(form.entries());payload.thumbnail_video_ids=selectedThumbnailIds;payload.repeat_days=[...event.target.querySelectorAll('[name="repeat_days"]:checked')].map(input=>input.value);payload.youtube_monetization=form.get('youtube_monetization')==='true';payload.disable_used_titles=form.get('disable_used_titles')==='true';payload.disable_used_thumbnails=form.get('disable_used_thumbnails')==='true';try{await api(editingRotationId?`/api/new-rotations/${editingRotationId}`:'/api/new-rotations',{method:editingRotationId?'PUT':'POST',body:JSON.stringify(payload)});location.reload()}catch(e){alert(e.message)}});
+// Weekly schedules can have multiple independent day/time windows.
+function renderWeeklySlots() {
+  const box = document.getElementById('repeatDays');
+  if (!box) return;
+  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  if (!weeklySlots.length) weeklySlots = [{ day_of_week: 1, start_time: '00:00', end_time: '01:00' }];
+  box.innerHTML = `<div class="flex items-center justify-between gap-3 mb-3"><div><span class="text-sm block">Weekly Live Slots</span><span class="text-xs text-gray-500">Each slot has its own day and live time (24-hour format).</span></div><button type="button" id="addWeeklySlot" class="text-xs px-3 py-1.5 bg-primary hover:bg-blue-600 rounded text-white"><i class="ti ti-plus"></i> Add Time</button></div><div class="space-y-2">${weeklySlots.map((slot, index) => `<div class="grid grid-cols-[1fr_90px_90px_auto] gap-2 items-end bg-dark-700 border border-gray-600 rounded-lg p-3"><label class="text-xs text-gray-400">Day<select data-slot-day="${index}" class="input mt-1">${names.map((name, day) => `<option value="${day}" ${Number(slot.day_of_week) === day ? 'selected' : ''}>${name}</option>`).join('')}</select></label><label class="text-xs text-gray-400">Start<input data-slot-start="${index}" type="text" inputmode="numeric" pattern="[0-2][0-9]:[0-5][0-9]" placeholder="HH:MM" value="${slot.start_time}" class="input mt-1"></label><label class="text-xs text-gray-400">End<input data-slot-end="${index}" type="text" inputmode="numeric" pattern="[0-2][0-9]:[0-5][0-9]" placeholder="HH:MM" value="${slot.end_time}" class="input mt-1"></label><button type="button" data-remove-slot="${index}" class="h-10 px-2 text-red-300 hover:text-red-100 ${weeklySlots.length === 1 ? 'opacity-30 pointer-events-none' : ''}" title="Remove time"><i class="ti ti-trash"></i></button></div>`).join('')}</div>`;
+  document.getElementById('addWeeklySlot').onclick = () => { weeklySlots.push({ day_of_week: 1, start_time: '00:00', end_time: '01:00' }); renderWeeklySlots(); };
+  box.querySelectorAll('[data-slot-day]').forEach(input => input.onchange = () => { weeklySlots[Number(input.dataset.slotDay)].day_of_week = Number(input.value); });
+  box.querySelectorAll('[data-slot-start]').forEach(input => input.onchange = () => { weeklySlots[Number(input.dataset.slotStart)].start_time = input.value; });
+  box.querySelectorAll('[data-slot-end]').forEach(input => input.onchange = () => { weeklySlots[Number(input.dataset.slotEnd)].end_time = input.value; });
+  box.querySelectorAll('[data-remove-slot]').forEach(button => button.onclick = () => { weeklySlots.splice(Number(button.dataset.removeSlot), 1); renderWeeklySlots(); });
+}
+function enforce24HourTimeInputs() {
+  document.querySelectorAll('#newRotationForm input[type="time"]').forEach(input => {
+    input.type = 'text'; input.inputMode = 'numeric'; input.placeholder = 'HH:MM';
+    input.pattern = '[0-2][0-9]:[0-5][0-9]'; input.title = 'Use 24-hour time, for example 20:30';
+  });
+}
+function toggleRepeatDays() {
+  const weekly = document.getElementById('repeatMode').value === 'weekly';
+  const box = document.getElementById('repeatDays');
+  const start = document.getElementById('rotationStartTime');
+  const end = document.getElementById('rotationEndTime');
+  const timeGrid = start?.closest('.grid');
+  box.classList.toggle('hidden', !weekly);
+  if (timeGrid) timeGrid.classList.toggle('hidden', weekly);
+  if (start) start.required = !weekly;
+  if (end) end.required = !weekly;
+  if (weekly) renderWeeklySlots();
+}
+const originalOpenRotationModal = openRotationModal;
+openRotationModal = function() { weeklySlots = []; originalOpenRotationModal(); enforce24HourTimeInputs(); toggleRepeatDays(); };
+const originalEditRotation = editRotation;
+editRotation = async function(id) {
+  await originalEditRotation(id);
+  enforce24HourTimeInputs();
+  const { rotation } = await api(`/api/new-rotations/${id}`);
+  if (rotation.repeat_mode === 'weekly') {
+    weeklySlots = (rotation.schedule_slots || []).map(slot => ({ day_of_week: Number(slot.day_of_week), start_time: slot.start_time, end_time: slot.end_time }));
+    if (!weeklySlots.length) weeklySlots = String(rotation.repeat_days || '').split(',').map(Number).filter(Number.isInteger).map(day => ({ day_of_week: day, start_time: (rotation.start_time || '').slice(11, 16), end_time: (rotation.end_time || '').slice(11, 16) }));
+    toggleRepeatDays();
+  }
+};
+enforce24HourTimeInputs();
+document.getElementById('newRotationForm')?.addEventListener('submit', async event => {
+  event.preventDefault(); event.stopImmediatePropagation();
+  const form = new FormData(event.target); const payload = Object.fromEntries(form.entries());
+  payload.thumbnail_video_ids = selectedThumbnailIds;
+  payload.schedule_slots = document.getElementById('repeatMode').value === 'weekly' ? weeklySlots : [];
+  payload.repeat_days = payload.schedule_slots.length ? [...new Set(payload.schedule_slots.map(slot => String(slot.day_of_week)))] : [];
+  payload.youtube_monetization = form.get('youtube_monetization') === 'true';
+  payload.disable_used_titles = form.get('disable_used_titles') === 'true';
+  payload.disable_used_thumbnails = form.get('disable_used_thumbnails') === 'true';
+  try { await api(editingRotationId ? `/api/new-rotations/${editingRotationId}` : '/api/new-rotations', { method: editingRotationId ? 'PUT' : 'POST', body: JSON.stringify(payload) }); location.reload(); } catch (error) { alert(error.message); }
+}, true);
+const originalViewRotation = viewRotation;
+viewRotation = async function(id) {
+  await originalViewRotation(id);
+  const { rotation } = await api(`/api/new-rotations/${id}`);
+  if (!rotation.schedule_slots?.length) return;
+  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const slots = rotation.schedule_slots.map(slot => `<span class="inline-flex items-center px-2.5 py-1 rounded bg-primary/15 text-primary text-xs">${names[Number(slot.day_of_week)]} ${escapeHtml(slot.start_time)}–${escapeHtml(slot.end_time)}</span>`).join(' ');
+  document.getElementById('rotationViewContent').insertAdjacentHTML('beforeend', `<div class="mt-4"><div class="text-xs text-gray-400 mb-2">Weekly Live Slots</div><div class="flex flex-wrap gap-2">${slots}</div></div>`);
+};
+
+// A Sync action is only needed after the Playlist contents change. It never appears
+// for a ready rotation, so users do not need to guess whether an encode is required.
+/* Legacy action-button injection removed: actions are rendered in the dropdown. */
+/* document.querySelectorAll('button[onclick^="editRotation("]').forEach(editButton => {
+  const match = editButton.getAttribute('onclick').match(/editRotation\('([^']+)'\)/);
+  if (!match) return;
+  const rotation = rotationSyncStates.find(item => item.id === match[1]);
+  if (!rotation || rotation.preparation_status !== 'needs_sync') return;
+  const changes = [];
+  if (rotation.sync_new_count) changes.push(`${rotation.sync_new_count} video baru`);
+  if (rotation.sync_removed_count) changes.push(`${rotation.sync_removed_count} video dihapus`);
+  const changeLabel = changes.join(', ') || 'Playlist berubah';
+  const syncButton = document.createElement('button');
+  syncButton.type = 'button';
+  syncButton.className = 'ml-2 px-2.5 py-1.5 text-xs rounded border border-blue-500/60 text-blue-300 hover:bg-blue-500/15';
+  syncButton.innerHTML = '<i class="ti ti-refresh"></i> Sync / Refresh Media';
+  syncButton.title = changeLabel;
+  syncButton.onclick = () => syncMedia(match[1]);
+  editButton.parentNode.insertBefore(syncButton, editButton);
+  const status = document.createElement('span');
+  status.className = 'mr-2 text-xs text-yellow-300';
+  status.textContent = `Needs Sync — ${changeLabel}`;
+  editButton.parentNode.insertBefore(status, syncButton);
+}); */
+
+// A live stream keeps its current FFmpeg process. Record the change now, but wait
+// until it is stopped before offering Sync / Refresh Media.
+/* document.querySelectorAll('button[onclick^="rotationAction("]').forEach(stopButton => {
+  const match = stopButton.getAttribute('onclick').match(/rotationAction\('([^']+)', 'stop'\)/);
+  if (!match) return;
+  const rotation = rotationSyncStates.find(item => item.id === match[1]);
+  if (!rotation || rotation.preparation_status !== 'needs_sync') return;
+  const count = rotation.sync_new_count || rotation.sync_removed_count;
+  const status = document.createElement('span');
+  status.className = 'mr-2 text-xs text-yellow-300';
+  status.textContent = `Needs Sync — ${count} perubahan playlist`;
+  stopButton.parentNode.insertBefore(status, stopButton);
+}); */
+
+// View is available even while a New Rotation is live; Edit remains protected.
+/* document.querySelectorAll('button[onclick^="rotationAction("], button[onclick^="editRotation("]').forEach(actionButton => {
+  const action = actionButton.getAttribute('onclick');
+  const match = action.match(/(?:rotationAction|editRotation)\('([^']+)/);
+  if (!match || actionButton.parentNode.querySelector(`[data-view-rotation="${match[1]}"]`)) return;
+  const viewButton = document.createElement('button');
+  viewButton.type = 'button';
+  viewButton.dataset.viewRotation = match[1];
+  viewButton.className = 'mr-2 px-2.5 py-1.5 text-xs rounded border border-gray-600 text-gray-200 hover:bg-gray-700';
+  viewButton.innerHTML = '<i class="ti ti-eye"></i> View';
+  viewButton.onclick = () => viewRotation(match[1]);
+  actionButton.parentNode.insertBefore(viewButton, actionButton);
+}); */
+
+// Rebuild older Rotation Ready files once. Current-profile files are skipped,
+// so the action is safe to use after changing a Playlist as well.
+/* document.querySelectorAll('button[onclick^="editRotation("]').forEach(editButton => {
+  const match = editButton.getAttribute('onclick').match(/editRotation\('([^']+)'\)/);
+  if (!match || editButton.parentNode.querySelector(`[data-rebuild-rotation="${match[1]}"]`)) return;
+  const button = document.createElement('button');
+  button.type = 'button'; button.dataset.rebuildRotation = match[1];
+  button.className = 'mr-2 px-2.5 py-1.5 text-xs rounded border border-amber-500/60 text-amber-300 hover:bg-amber-500/15';
+  button.innerHTML = '<i class="ti ti-video"></i> Rebuild 4000';
+  button.title = 'Standardize Rotation Ready files to 720p / 30 FPS / 4000 Kbps';
+  button.onclick = () => rebuildReadyMedia(match[1]);
+  editButton.parentNode.insertBefore(button, editButton);
+}); */
+
+// Keep the primary action visible. All secondary actions live in the same
+// compact dropdown on desktop and mobile.
+document.querySelectorAll('details.relative').forEach(dropdown => {
+  const menu = dropdown.querySelector(':scope > div.absolute');
+  const container = dropdown.parentElement;
+  if (!menu || !container) return;
+
+  const viewButton = container.querySelector(':scope > button[onclick^="viewRotation("]');
+  if (viewButton) {
+    viewButton.className = 'w-full px-3 py-2 text-left text-xs rounded text-gray-200 hover:bg-gray-700';
+    menu.insertBefore(viewButton, menu.firstChild);
+  }
+
+  const primaryButton = menu.querySelector('button[onclick^="rotationAction("]');
+  if (primaryButton) {
+    const isStop = primaryButton.getAttribute('onclick').includes("'stop'");
+    primaryButton.className = container.tagName === 'TD'
+      ? `px-3 py-1.5 text-xs rounded text-white ${isStop ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-blue-600'}`
+      : `flex-1 py-2 text-xs rounded text-white ${isStop ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-blue-600'}`;
+    primaryButton.textContent = isStop ? 'Stop' : 'Start';
+    container.insertBefore(primaryButton, dropdown);
+  }
+
+  const editButton = menu.querySelector('button[onclick^="editRotation("]');
+  if (editButton && !menu.querySelector('[data-rebuild-menu]')) {
+    const match = editButton.getAttribute('onclick').match(/editRotation\('([^']+)'\)/);
+    if (match) {
+      const rebuildButton = document.createElement('button');
+      rebuildButton.type = 'button';
+      rebuildButton.dataset.rebuildMenu = match[1];
+      rebuildButton.className = 'w-full px-3 py-2 text-left text-xs rounded text-amber-300 hover:bg-amber-500/15';
+      rebuildButton.innerHTML = '<i class="ti ti-video mr-2"></i>Rebuild 4000';
+      rebuildButton.onclick = () => rebuildReadyMedia(match[1]);
+      editButton.insertAdjacentElement('afterend', rebuildButton);
+    }
+  }
+});
+
+// Native <details> does not close when the user clicks elsewhere. Make these
+// action menus behave like a regular dropdown without affecting other details.
+document.addEventListener('click', event => {
+  document.querySelectorAll('details.relative[open]').forEach(dropdown => {
+    if (!dropdown.contains(event.target)) dropdown.removeAttribute('open');
+  });
+});
+document.querySelectorAll('details.relative').forEach(dropdown => {
+  dropdown.addEventListener('click', event => {
+    if (event.target.closest('.absolute button')) dropdown.removeAttribute('open');
+  });
+});
+</script>

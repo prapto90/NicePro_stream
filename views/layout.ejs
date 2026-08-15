@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>
+    <%= title %> - StreamFlow
+  </title>
+  <link rel="icon" href="/images/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.30.0/fonts/tabler-icons.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.30.0/tabler-icons.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/styles.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        fontFamily: {
+          'inter': ['Inter', 'sans-serif'],
+          'sans': ['Inter', 'system-ui', 'sans-serif']
+        },
+        extend: {
+          colors: {
+            'primary': '#0055FF',
+            'secondary': '#0043CA',
+            'dark': {
+              '900': '#121212',
+              '800': '#252525',
+              '700': '#2D2D2D',
+              '600': '#3D3D3D',
+              '500': '#6E6E6E',
+              '400': '#8F8F8F',
+              '300': '#AFAFAF',
+              '200': '#CFCFCF',
+              '100': '#E5E5E5',
+            },
+            'gray': {
+              '900': '#121212',
+              '800': '#252525',
+              '700': '#2D2D2D',
+              '600': '#3D3D3D',
+              '500': '#6E6E6E',
+              '400': '#8F8F8F',
+              '300': '#AFAFAF',
+              '200': '#CFCFCF',
+              '100': '#E5E5E5',
+              '50': '#F5F5F5',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="/js/stream-modal.js" defer></script>
+  <script>
+     if ('serviceWorker' in navigator) {
+       window.addEventListener('load', function() {
+         navigator.serviceWorker.register('/sw.js')
+           .then(function(registration) {
+             console.log('Service Worker registered successfully:', registration.scope);
+           })
+           .catch(function(error) {
+             console.log('Service Worker registration failed:', error);
+           });
+       });
+     }
+   </script>
+</head>
+<body class="bg-dark-900 text-white font-inter">
+  <div
+    class="lg:hidden fixed top-0 left-0 right-0 h-16 bg-dark-800 shadow-lg flex items-center justify-between px-6 z-30">
+    <div class="flex items-center">
+      <img src="/images/logo_mobile.svg" alt="StreamFlow Logo" class="h-8">
+    </div>
+    <div class="flex items-center gap-1">
+      <div id="mobile-server-time" class="hidden items-center gap-1.5 text-gray-400 text-sm mr-2">
+        <span id="mobile-server-date">--</span>
+        <span class="text-gray-600">•</span>
+        <span id="mobile-server-clock" class="tabular-nums">--:--:--</span>
+      </div>
+      <div id="mobile-separator" class="hidden h-4 w-px bg-gray-600 mr-1"></div>
+      <a href="https://donate.youtube101.id/" target="_blank" 
+         class="p-2 text-gray-400 hover:text-white transition-colors">
+        <i class="ti ti-gift text-lg"></i>
+      </a>
+      <div class="relative">
+        <button id="mobile-notification-btn" class="p-2 text-gray-400 hover:text-white transition-colors relative">
+          <i class="ti ti-bell text-lg"></i>
+          <span class="hidden absolute top-0.5 right-0.5 w-2 h-2 bg-red-500 rounded-full"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="flex">
+    <div class="hidden lg:flex lg:fixed lg:flex-col w-20 h-screen pt-2 bg-dark-800 shadow-lg overflow-hidden">
+      <div class="flex items-center justify-center h-14 w-14 mx-auto mb-4">
+        <img src="/images/logo.svg" alt="StreamFlow Logo" class="w-9 h-9">
+      </div>
+      <div class="flex-1">
+        <a href="/dashboard" class="sidebar-icon group <%= active === 'dashboard' ? 'bg-primary' : '' %>">
+          <i class="ti ti-broadcast text-xl"></i>
+          <span class="text-xs mt-1">Streams</span>
+          <span class="sidebar-tooltip group-hover:scale-100">Stream Manager</span>
+        </a>
+        <a href="/rotations" class="sidebar-icon group <%= active === 'rotations' ? 'bg-primary' : '' %>">
+          <i class="ti ti-rotate text-xl"></i>
+          <span class="text-xs mt-1">Rotations</span>
+          <span class="sidebar-tooltip group-hover:scale-100">Stream Rotations</span>
+        </a>
+        <a href="/new-rotations" class="sidebar-icon group <%= active === 'new-rotations' ? 'bg-primary' : '' %>">
+          <i class="ti ti-repeat text-xl"></i>
+          <span class="text-xs mt-1">New Rotations</span>
+          <span class="sidebar-tooltip group-hover:scale-100">Daily Title & Thumbnail Rotations</span>
+        </a>
+        <a href="/gallery" class="sidebar-icon group <%= active === 'gallery' ? 'bg-primary' : '' %>">
+          <i class="ti ti-video text-xl"></i>
+          <span class="text-xs mt-1">Gallery</span>
+          <span class="sidebar-tooltip group-hover:scale-100">Video Gallery</span>
+        </a>
+        <a href="/playlist" class="sidebar-icon group <%= active === 'playlist' ? 'bg-primary' : '' %>">
+          <i class="ti ti-playlist text-xl"></i>
+          <span class="text-xs mt-1">Playlist</span>
+          <span class="sidebar-tooltip group-hover:scale-100">Playlist Manager</span>
+        </a>
+        <a href="/history" class="sidebar-icon group <%= active === 'history' ? 'bg-primary' : '' %>">
+          <i class="ti ti-history text-xl"></i>
+          <span class="text-xs mt-1">History</span>
+          <span class="sidebar-tooltip group-hover:scale-100">Stream History</span>
+        </a>
+        <% if (req.session && req.session.user_role === 'admin') { %>
+        <a href="/users" class="sidebar-icon group <%= active === 'users' ? 'bg-primary' : '' %>">
+          <i class="ti ti-users text-xl"></i>
+          <span class="text-xs mt-1">Users</span>
+          <span class="sidebar-tooltip group-hover:scale-100">User Management</span>
+        </a>
+        <% } %>
+      </div>
+      <div class="mt-auto">
+        <div class="h-px bg-gray-700 w-full"></div>
+        <div class="relative" id="profile-menu-container">
+          <div class="h-20 flex items-center justify-center px-3 py-4 hover:bg-dark-700/50 transition-colors">
+            <button id="profile-menu-button"
+              class="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden ring-2 ring-gray-700 hover:ring-primary transition-all">
+              <%- helpers.getAvatar(req) %>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="profile-dropdown" class="fixed bg-dark-800 shadow-xl border border-gray-700 hidden">
+      <div class="px-4 py-2 border-b border-gray-700">
+        <div class="font-medium">
+          <%= helpers.getUsername(req) %>
+        </div>
+      </div>
+      <a href="/settings"
+        class="flex items-center px-4 py-2.5 text-sm text-gray-300 hover:bg-dark-700 hover:text-white transition-colors">
+        <i class="ti ti-settings mr-3"></i>
+        <span>Settings</span>
+      </a>
+      <a href="https://github.com/bangtutorial/streamflow/issues"
+        class="flex items-center px-4 py-2.5 text-sm text-gray-300 hover:bg-dark-700 hover:text-white transition-colors" target="_blank">
+        <i class="ti ti-help mr-3"></i>
+        <span>Help & Support</span>
+      </a>
+      <div class="h-px bg-gray-700 mx-4"></div>
+      <a href="/logout" class="flex items-center px-4 py-2.5 text-sm text-logout hover:bg-dark-700 transition-colors">
+        <i class="ti ti-logout mr-3"></i>
+        <span>Sign Out</span>
+      </a>
+    </div>
+    <div class="w-full lg:ml-20 flex flex-col min-h-screen">
+      <div
+        class="hidden lg:fixed lg:flex top-0 right-0 left-20 items-center justify-end h-14 px-6 bg-dark-800 shadow-md z-10">
+        <div id="server-time-display" class="flex items-center gap-1.5 text-gray-400 text-sm mr-4">
+          <span id="server-date">--</span>
+          <span class="text-gray-600">•</span>
+          <span id="server-clock" class="tabular-nums">--:--:--</span>
+        </div>
+        <div class="h-4 w-px bg-gray-600 mr-4"></div>
+        <a href="https://github.com/bangtutorial/streamflow" target="_blank"
+          class="p-2 text-gray-400 hover:text-white transition-colors mr-2">
+          <i class="ti ti-brand-github text-lg"></i>
+        </a>
+        <div class="relative">
+          <button id="notification-btn" class="p-2 text-gray-400 hover:text-white transition-colors relative">
+            <i class="ti ti-bell text-lg"></i>
+            <span class="hidden absolute top-0.5 right-0.5 w-2 h-2 bg-red-500 rounded-full"></span>
+          </button>
+          <div id="notification-dropdown"
+            class="hidden absolute right-0 mt-1 w-80 bg-dark-800 border border-gray-700 rounded-lg shadow-xl z-[60]">
+            <div class="p-3 border-b border-gray-700 flex items-center justify-between">
+              <h3 class="font-medium">Notifications</h3>
+            </div>
+            <div class="max-h-80 overflow-y-auto" id="notification-list">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="p-6 pt-20 lg:pt-22 flex-1">
+        <%- body %>
+      </div>
+      <div class="hidden lg:flex justify-end pr-6 py-4">
+        <div class="flex items-center gap-2">
+          <div class="text-xs text-gray-500">
+            StreamFlow <span class="text-xs font-medium bg-gray-700 px-1 rounded">v<%= appVersion %></span>
+          </div>
+          <div class="h-3 w-px bg-gray-700"></div>
+          <a href="https://youtube.com/@bangtutorial" target="_blank" class="text-xs text-gray-500 hover:underline">by
+            Bang Tutorial</a>
+          <a href="https://saweria.co/fitrieffendi" target="_blank" class="saweria-button relative ml-1">
+            <span class="relative z-10 flex items-center gap-1.5 text-gray-800 font-medium px-2.5 py-1 text-xs">
+              <img src="/images/saweria.svg" alt="Saweria" class="w-3.5 h-3.5">
+              <span>Donate</span>
+            </span>
+            <div class="saweria-tooltip px-3 py-2 bg-white text-gray-800 text-xs rounded-lg shadow-lg whitespace-nowrap">
+              Terima kasih sudah bantu support 🙏
+              <div class="tooltip-arrow"></div>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="lg:hidden fixed bottom-0 left-0 right-0 bg-dark-800 border-t border-gray-700 shadow-lg z-30">
+    <nav class="flex justify-around items-center h-16">
+      <a href="/dashboard" class="bottom-nav-item <%= active === 'dashboard' ? 'bottom-nav-active' : '' %>">
+        <i class="ti ti-broadcast"></i>
+        <span>Streams</span>
+      </a>
+      <a href="/rotations" class="bottom-nav-item <%= active === 'rotations' ? 'bottom-nav-active' : '' %>">
+        <i class="ti ti-rotate"></i>
+        <span>Rotations</span>
+      </a>
+      <a href="/new-rotations" class="bottom-nav-item <%= active === 'new-rotations' ? 'bottom-nav-active' : '' %>">
+        <i class="ti ti-repeat"></i>
+        <span>New</span>
+      </a>
+      <a href="/gallery" class="bottom-nav-item <%= active === 'gallery' ? 'bottom-nav-active' : '' %>">
+        <i class="ti ti-video"></i>
+        <span>Gallery</span>
+      </a>
+      <a href="/playlist" class="bottom-nav-item <%= active === 'playlist' ? 'bottom-nav-active' : '' %>">
+        <i class="ti ti-playlist"></i>
+        <span>Playlist</span>
+      </a>
+      <button id="mobile-profile-btn" class="bottom-nav-item">
+        <div class="relative">
+          <div class="w-6 h-6 rounded-full overflow-hidden mx-auto">
+            <%- helpers.getAvatar(req) %>
+          </div>
+        </div>
+        <span>Profile</span>
+      </button>
+    </nav>
+    <div id="mobile-profile-popup"
+      class="fixed bottom-16 right-2 bg-dark-800 rounded-lg shadow-xl border border-gray-700 overflow-hidden hidden transform transition-all duration-200 ease-out opacity-0 translate-y-4 w-40">
+      <div class="py-2 px-3">
+        <div class="text-sm font-medium mb-1">
+          <%= helpers.getUsername(req) %>
+        </div>
+        <div class="text-xs text-gray-400 mb-2">
+          <%= req.session.email || '' %>
+        </div>
+        <div class="h-px bg-gray-700 my-2"></div>
+        <% if (req.session && req.session.user_role === 'admin') { %>
+        <a href="/users" class="flex items-center py-2 text-gray-300 hover:text-white text-sm">
+          <i class="ti ti-users mr-2"></i>
+          <span>Users</span>
+        </a>
+        <% } %>
+        <a href="/settings" class="flex items-center py-2 text-gray-300 hover:text-white text-sm">
+          <i class="ti ti-settings mr-2"></i>
+          <span>Settings</span>
+        </a>
+        <div class="h-px bg-gray-700 my-2"></div>
+        <a href="/logout" class="flex items-center py-2 text-red-400 hover:text-red-300 text-sm">
+          <i class="ti ti-logout mr-2"></i>
+          <span>Sign Out</span>
+        </a>
+      </div>
+    </div>
+  </div>
+  <div id="mobile-notification-popup"
+    class="fixed bottom-16 right-2 bg-dark-800 rounded-lg shadow-xl border border-gray-700 overflow-hidden hidden transform transition-all duration-200 ease-out opacity-0 translate-y-4 w-72 z-[60]">
+    <div class="p-3 border-b border-gray-700 flex items-center justify-between">
+      <h3 class="font-medium">Notifications</h3>
+    </div>
+    <div class="max-h-80 overflow-y-auto" id="mobile-notification-list">
+    </div>
+  </div>
+  <div id="streamflowUpdateModal" class="fixed inset-0 bg-black/60 z-[60] hidden items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-dark-800 rounded-xl shadow-xl w-full max-w-2xl m-auto flex flex-col max-h-[90vh] border border-gray-700/50">
+      <div class="flex-shrink-0 flex items-center justify-between px-5 py-2 border-b border-gray-700/50">
+        <h3 class="text-lg font-medium text-white flex items-center gap-2">
+          <span class="text-base">🎉 Update StreamFlow v2</span>
+        </h3>
+        <button onclick="closeStreamflowUpdateModal()" class="text-gray-400 hover:text-white hover:bg-gray-700/50 px-2 py-1 rounded-lg transition-colors">
+          <i class="ti ti-x text-lg"></i>
+        </button>
+      </div>
+      <div class="p-5 overflow-y-auto text-gray-300 space-y-4">
+        <p class="text-sm">Terima kasih buat teman-teman yang sudah menunggu. Berikut adalah update terbaru yang ada di StreamFlow v2:</p>
+        
+        <div class="space-y-4">
+          <div class="flex items-start gap-3">
+            <div class="shrink-0">
+              <div class="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center">
+                <i class="ti ti-layout-dashboard text-blue-400"></i>
+              </div>
+            </div>
+            <div>
+              <h4 class="font-medium text-white text-sm">UI Baru yang Lebih Fresh</h4>
+              <p class="text-gray-300 mt-1 text-sm">Tampilan baru yang lebih fresh dan user freindly. Sudah dibikin senyaman mungkin untuk kebutuhan live streaming.</p>
+            </div>
+          </div>
+          
+          <div class="flex items-start gap-3">
+            <div class="shrink-0">
+              <div class="w-8 h-8 bg-green-500/20 rounded-full flex items-center justify-center">
+                <i class="ti ti-rocket text-green-400"></i>
+              </div>
+            </div>
+            <div>
+              <h4 class="font-medium text-white text-sm">Live Streaming Lebih Ringan</h4>
+              <p class="text-gray-300 mt-1 text-sm">Di StreamFlow v2, proses streaming sudah dioptimalkan, sehingga jauh lebih ringan dibandingkan StreamFlow v1 sebelumnya.</p>
+            </div>
+          </div>
+          
+          <div class="flex items-start gap-3">
+            <div class="shrink-0">
+              <div class="w-8 h-8 bg-purple-500/20 rounded-full flex items-center justify-center">
+                <i class="ti ti-calendar text-purple-400"></i>
+              </div>
+            </div>
+            <div>
+              <h4 class="font-medium text-white text-sm">Penjadwalan Live Streaming</h4>
+              <p class="text-gray-300 mt-1 text-sm">Di versi baru ini, fitur penjadwalan streaming ataupun auto stop sudah ditambahkan dan diperbaiki dibanding versi sebelumnya.</p>
+            </div>
+          </div>
+          
+          <div class="flex items-start gap-3">
+            <div class="shrink-0">
+              <div class="w-8 h-8 bg-amber-500/20 rounded-full flex items-center justify-center">
+                <i class="ti ti-bug text-amber-400"></i>
+              </div>
+            </div>
+            <div>
+              <h4 class="font-medium text-white text-sm">Fix Bug</h4>
+              <p class="text-gray-300 mt-1 text-sm">Beberapa bug yang sering ditemui di versi sebelumnya sudah di fix pada StreamFlow v2 ini, salah satunya bug streaming tiba-tiba terhenti.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+<style>
+  #server-clock, #mobile-server-clock {
+    font-variant-numeric: tabular-nums;
+  }
+  @media (min-width: 550px) {
+    #mobile-server-time {
+      display: flex !important;
+    }
+    #mobile-separator {
+      display: block !important;
+    }
+  }
+  @media (min-width: 1024px) {
+    #mobile-server-time {
+      display: none !important;
+    }
+    #mobile-separator {
+      display: none !important;
+    }
+  }
+  #profile-dropdown {
+    position: fixed;
+    z-index: 100;
+    min-width: 220px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+    width: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    bottom: 80px;
+    left: 15px;
+  }
+  #profile-dropdown.hidden {
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+    display: block !important;
+    visibility: hidden;
+  }
+  @media (max-width: 768px) {
+    #profile-dropdown {
+      min-width: 200px;
+      right: 20px;
+      left: auto;
+      bottom: auto;
+      top: 100px;
+    }
+  }
+  .text-logout {
+    color: #FF5555;
+  }
+  .text-logout:hover {
+    color: #FF7777;
+  }
+  .saweria-button {
+    position: relative;
+    border-radius: 6px;
+    background: #ffffff;
+    border: 2px solid #000000;
+    box-shadow: 3px 3px 0px #000000;
+    transition: all 0.2s ease;
+  }
+  .saweria-button:hover {
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0px #000000;
+  }
+  .saweria-button:active {
+    transform: translate(2px, 2px);
+    box-shadow: 0px 0px 0px #000000;
+  }
+  .saweria-tooltip {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 10px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s, transform 0.3s;
+    transform: translateY(5px);
+    z-index: 50;
+    filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.2));
+  }
+  .saweria-button:hover .saweria-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+  .tooltip-arrow {
+    position: absolute;
+    bottom: -6px;
+    right: 10px;
+    width: 12px;
+    height: 12px;
+    background-color: white;
+    transform: rotate(45deg);
+  }
+  @media (max-width: 1023px) {
+    body {
+      padding-top: 16px;
+    }
+  }
+  .bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    text-align: center;
+    padding: 8px 0;
+    color: #8F8F8F;
+    position: relative;
+    transition: color 0.2s ease;
+  }
+  .bottom-nav-item i {
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+  .bottom-nav-item span {
+    font-size: 11px;
+  }
+  .bottom-nav-item:hover {
+    color: #E5E5E5;
+  }
+  .bottom-nav-active {
+    color: #0055FF;
+  }
+  .bottom-nav-active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 3px;
+    background-color: #0055FF;
+    border-radius: 0 0 4px 4px;
+  }
+  @media (max-width: 1023px) {
+    .min-h-screen {
+      padding-bottom: 80px !important;
+    }
+    #mobile-profile-popup.show {
+      opacity: 1;
+      transform: translateY(0);
+      visibility: visible;
+    }
+  }
+  #mobile-notification-popup.show {
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+    visibility: visible !important;
+  }
+  #mobile-notification-popup {
+    z-index: 100;
+    transition: opacity 0.3s, transform 0.3s, visibility 0.3s;
+    display: block !important;
+    visibility: hidden;
+  }
+  #mobile-notification-popup.hidden {
+    display: none !important;
+  }
+</style>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const profileButton = document.getElementById('profile-menu-button');
+    const profileDropdown = document.getElementById('profile-dropdown');
+    if (!profileButton || !profileDropdown) return;
+    profileButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const isHidden = profileDropdown.classList.contains('hidden');
+      profileDropdown.classList.toggle('hidden');
+    });
+    document.addEventListener('click', (e) => {
+      const isClickInsideDropdown = profileDropdown.contains(e.target);
+      const isClickOnButton = profileButton.contains(e.target);
+      if (!isClickInsideDropdown && !isClickOnButton && !profileDropdown.classList.contains('hidden')) {
+        profileDropdown.classList.add('hidden');
+      }
+    });
+    profileDropdown.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+    const profileBtn = document.getElementById('mobile-profile-btn');
+    const profilePopup = document.getElementById('mobile-profile-popup');
+    if (profileBtn && profilePopup) {
+      profileBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (profilePopup.classList.contains('hidden')) {
+          profilePopup.classList.remove('hidden');
+          setTimeout(() => {
+            profilePopup.classList.add('show');
+          }, 10);
+        } else {
+          profilePopup.classList.remove('show');
+          setTimeout(() => {
+            profilePopup.classList.add('hidden');
+          }, 200);
+        }
+      });
+      document.addEventListener('click', function (e) {
+        if (!profilePopup.classList.contains('hidden') &&
+          !profileBtn.contains(e.target) &&
+          !profilePopup.contains(e.target)) {
+          profilePopup.classList.remove('show');
+          setTimeout(() => {
+            profilePopup.classList.add('hidden');
+          }, 200);
+        }
+      });
+    }
+    const mobileNotificationBtn = document.getElementById('mobile-notification-btn');
+    const mobileNotificationPopup = document.getElementById('mobile-notification-popup');
+    if (mobileNotificationBtn && mobileNotificationPopup) {
+      mobileNotificationBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        hideNotificationBadge();
+        
+        const btnRect = mobileNotificationBtn.getBoundingClientRect();
+        mobileNotificationPopup.style.top = '64px';
+        mobileNotificationPopup.style.right = '10px';
+        mobileNotificationPopup.style.left = 'auto';
+        mobileNotificationPopup.style.bottom = 'auto';
+        if (mobileNotificationPopup.classList.contains('hidden')) {
+          mobileNotificationPopup.classList.remove('hidden');
+          setTimeout(() => {
+            mobileNotificationPopup.classList.add('show');
+          }, 10);
+        } else {
+          mobileNotificationPopup.classList.remove('show');
+          setTimeout(() => {
+            mobileNotificationPopup.classList.add('hidden');
+          }, 200);
+        }
+      });
+      document.addEventListener('click', function (e) {
+        if (!mobileNotificationPopup.classList.contains('hidden') &&
+          !mobileNotificationBtn.contains(e.target) &&
+          !mobileNotificationPopup.contains(e.target)) {
+          mobileNotificationPopup.classList.remove('show');
+          setTimeout(() => {
+            mobileNotificationPopup.classList.add('hidden');
+          }, 200);
+        }
+      });
+    }
+
+    const notificationBtn = document.getElementById('notification-btn');
+    const notificationDropdown = document.getElementById('notification-dropdown');
+    if (notificationBtn && notificationDropdown) {
+      notificationBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        hideNotificationBadge();
+        
+        if (notificationDropdown.classList.contains('hidden')) {
+          notificationDropdown.classList.remove('hidden');
+        } else {
+          notificationDropdown.classList.add('hidden');
+        }
+      });
+      
+      document.addEventListener('click', function (e) {
+        if (!notificationDropdown.classList.contains('hidden') &&
+          !notificationBtn.contains(e.target) &&
+          !notificationDropdown.contains(e.target)) {
+          notificationDropdown.classList.add('hidden');
+        }
+      });
+    }
+  });
+
+  function loadNotifications() {
+    checkGitHubUpdates();
+  }
+
+  function hideNotificationBadge() {
+    const badge = document.querySelector('#notification-btn .bg-red-500');
+    const mobileBadge = document.querySelector('#mobile-notification-btn .bg-red-500');
+    
+    if (badge) badge.classList.add('hidden');
+    if (mobileBadge) mobileBadge.classList.add('hidden');
+    
+    const latestCommitSha = localStorage.getItem('latestCommitSha');
+    if (latestCommitSha) {
+      localStorage.setItem('savedCommitSha', latestCommitSha);
+    }
+  }
+
+  async function checkGitHubUpdates() {
+    try {
+      const response = await fetch('https://api.github.com/repos/bangtutorial/streamflow/commits?per_page=3');
+      if (!response.ok) {
+        return;
+      }
+      
+      const commits = await response.json();
+      
+      if (commits && commits.length > 0) {
+        const latestCommitSha = commits[0].sha;
+        const savedCommitSha = localStorage.getItem('savedCommitSha');
+        
+        localStorage.setItem('latestCommitSha', latestCommitSha);
+        
+        showGitHubUpdateNotifications(commits);
+        
+        if (!savedCommitSha) {
+          localStorage.setItem('savedCommitSha', latestCommitSha);
+        } else if (savedCommitSha !== latestCommitSha) {
+          showNotificationBadge();
+        } else {
+          const badge = document.querySelector('#notification-btn .bg-red-500');
+          const mobileBadge = document.querySelector('#mobile-notification-btn .bg-red-500');
+          if (badge) badge.classList.add('hidden');
+          if (mobileBadge) mobileBadge.classList.add('hidden');
+        }
+      }
+    } catch (error) {
+    }
+  }
+
+  function showNotificationBadge() {
+    const badge = document.querySelector('#notification-btn .bg-red-500');
+    const mobileBadge = document.querySelector('#mobile-notification-btn .bg-red-500');
+    
+    if (badge) badge.classList.remove('hidden');
+    if (mobileBadge) mobileBadge.classList.remove('hidden');
+  }
+
+  function showGitHubUpdateNotifications(commits) {
+    const notificationList = document.getElementById('notification-list');
+    const mobileNotificationList = document.getElementById('mobile-notification-list');
+    
+    if (notificationList) {
+      const existingNotifications = notificationList.querySelectorAll('[data-github-notification]');
+      existingNotifications.forEach(notification => notification.remove());
+    }
+    if (mobileNotificationList) {
+      const existingNotifications = mobileNotificationList.querySelectorAll('[data-github-notification]');
+      existingNotifications.forEach(notification => notification.remove());
+    }
+    
+    commits.forEach(commit => {
+      const timeAgo = getTimeAgo(commit.commit.author.date);
+      const commitMessage = commit.commit.message.split('\n')[0];
+      const shortSha = commit.sha.substring(0, 7);
+      const authorName = commit.commit.author.name;
+      
+      const notificationHTML = `
+        <div class="p-3 hover:bg-gray-700/50 transition-colors cursor-pointer" data-github-notification onclick="window.open('${commit.html_url}', '_blank')">
+          <div class="flex items-start gap-3">
+            <div class="w-8 h-8 flex-shrink-0">
+              <img src="${commit.author.avatar_url}" alt="${authorName}" class="w-8 h-8 rounded-full object-cover">
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-sm font-medium text-white mb-1">New GitHub Commit</h4>
+              <p class="text-xs text-gray-300 mb-1">${commitMessage}</p>
+              <p class="text-xs text-gray-400">by ${authorName} • ${timeAgo}</p>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      if (notificationList) {
+        notificationList.insertAdjacentHTML('beforeend', notificationHTML);
+      }
+      if (mobileNotificationList) {
+        mobileNotificationList.insertAdjacentHTML('beforeend', notificationHTML);
+      }
+    });
+    
+    updateNotificationBadge();
+  }
+
+  function getTimeAgo(dateString) {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    if (diffInSeconds < 60) {
+      return 'Just now';
+    } else if (diffInSeconds < 3600) {
+      const minutes = Math.floor(diffInSeconds / 60);
+      return `${minutes} minutes ago`;
+    } else if (diffInSeconds < 86400) {
+      const hours = Math.floor(diffInSeconds / 3600);
+      return `${hours} hours ago`;
+    } else {
+      const days = Math.floor(diffInSeconds / 86400);
+      return `${days} days ago`;
+    }
+  }
+
+  function updateNotificationBadge() {
+    const badge = document.querySelector('#notification-btn .bg-red-500');
+    const mobileBadge = document.querySelector('#mobile-notification-btn .bg-red-500');
+    const latestCommitSha = localStorage.getItem('latestCommitSha');
+    const savedCommitSha = localStorage.getItem('savedCommitSha');
+
+    if (savedCommitSha && latestCommitSha && savedCommitSha !== latestCommitSha) {
+      if (badge) badge.classList.remove('hidden');
+      if (mobileBadge) mobileBadge.classList.remove('hidden');
+    } else {
+      if (badge) badge.classList.add('hidden');
+      if (mobileBadge) mobileBadge.classList.add('hidden');
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    loadNotifications();
+    initServerTime();
+  });
+
+  let serverTimeOffset = 0;
+  let serverTimezoneOffset = 0;
+  let serverTimeInterval = null;
+
+  async function initServerTime() {
+    try {
+      const response = await fetch('/api/server-time');
+      if (!response.ok) return;
+      const data = await response.json();
+      const serverTime = new Date(data.serverTime);
+      const clientTime = new Date();
+      serverTimeOffset = serverTime.getTime() - clientTime.getTime();
+      if (typeof data.timezoneOffset === 'number') {
+        serverTimezoneOffset = data.timezoneOffset;
+      }
+      updateServerTimeDisplay();
+      if (serverTimeInterval) clearInterval(serverTimeInterval);
+      serverTimeInterval = setInterval(updateServerTimeDisplay, 1000);
+      setInterval(syncServerTime, 5 * 60 * 1000);
+    } catch (error) {
+    }
+  }
+
+  async function syncServerTime() {
+    try {
+      const response = await fetch('/api/server-time');
+      if (!response.ok) return;
+      const data = await response.json();
+      const serverTime = new Date(data.serverTime);
+      const clientTime = new Date();
+      serverTimeOffset = serverTime.getTime() - clientTime.getTime();
+      if (typeof data.timezoneOffset === 'number') {
+        serverTimezoneOffset = data.timezoneOffset;
+      }
+    } catch (error) {
+    }
+  }
+
+  function updateServerTimeDisplay() {
+    const serverNowMs = Date.now() + serverTimeOffset;
+    const serverWallClock = new Date(serverNowMs - serverTimezoneOffset * 60 * 1000);
+    const day = String(serverWallClock.getUTCDate()).padStart(2, '0');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = monthNames[serverWallClock.getUTCMonth()];
+    const year = serverWallClock.getUTCFullYear();
+    const hours = String(serverWallClock.getUTCHours()).padStart(2, '0');
+    const minutes = String(serverWallClock.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(serverWallClock.getUTCSeconds()).padStart(2, '0');
+    const dateStr = `${day} ${month} ${year}`;
+    const timeStr = `${hours}:${minutes}:${seconds}`;
+    const dateEl = document.getElementById('server-date');
+    const clockEl = document.getElementById('server-clock');
+    const mobileDateEl = document.getElementById('mobile-server-date');
+    const mobileClockEl = document.getElementById('mobile-server-clock');
+    if (dateEl) dateEl.textContent = dateStr;
+    if (clockEl) clockEl.textContent = timeStr;
+    if (mobileDateEl) mobileDateEl.textContent = dateStr;
+    if (mobileClockEl) mobileClockEl.textContent = timeStr;
+  }
+
+  function openStreamflowUpdateModal() {
+    const modal = document.getElementById('streamflowUpdateModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function closeStreamflowUpdateModal() {
+    const modal = document.getElementById('streamflowUpdateModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      document.body.style.overflow = 'auto';
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const updateModal = document.getElementById('streamflowUpdateModal');
+    if (e.key === 'Escape' && updateModal && !updateModal.classList.contains('hidden')) {
+      closeStreamflowUpdateModal();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    const updateModal = document.getElementById('streamflowUpdateModal');
+    if (updateModal && e.target === updateModal) { 
+      closeStreamflowUpdateModal();
+    }
+  });
+</script>

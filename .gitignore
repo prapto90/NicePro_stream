@@ -1,0 +1,17 @@
+node_modules/
+public/uploads/
+logs/
+
+# Local environment and generated runtime data
+.env
+.env.*
+!.env.example
+
+# SQLite databases and their temporary journal/WAL files
+db/*.sqlite
+db/*.sqlite-*
+db/*.db
+db/*.db-*
+
+# Dependencies and locally generated lockfile
+package-lock.json
