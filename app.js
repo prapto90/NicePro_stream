@@ -854,8 +854,9 @@ app.get('/gallery', isAuthenticated, async (req, res) => {
     if (currentFolderId && !currentFolder) {
       return res.redirect('/gallery');
     }
-    const [videos, galleryUsage] = await Promise.all([Video.findByUserAndFolder(req.session.userId, currentFolderId), NewRotation.getGalleryUsage(req.session.userId)]);
+    const [videos, galleryUsage, folderThumbnailUsage] = await Promise.all([Video.findByUserAndFolder(req.session.userId, currentFolderId), NewRotation.getGalleryUsage(req.session.userId), NewRotation.getGalleryFolderThumbnailUsage(req.session.userId)]);
     videos.forEach(video => Object.assign(video, galleryUsage.get(video.id) || {}));
+    folders.forEach(folder => Object.assign(folder, folderThumbnailUsage.get(folder.id) || { thumbnail_count: 0, used_live_count: 0 }));
     res.render('gallery', {
       title: 'Video Gallery',
       active: 'gallery',
@@ -881,8 +882,9 @@ app.get('/api/gallery/data', isAuthenticated, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Folder not found' });
     }
 
-    const [videos, galleryUsage] = await Promise.all([Video.findByUserAndFolder(req.session.userId, currentFolderId), NewRotation.getGalleryUsage(req.session.userId)]);
+    const [videos, galleryUsage, folderThumbnailUsage] = await Promise.all([Video.findByUserAndFolder(req.session.userId, currentFolderId), NewRotation.getGalleryUsage(req.session.userId), NewRotation.getGalleryFolderThumbnailUsage(req.session.userId)]);
     videos.forEach(video => Object.assign(video, galleryUsage.get(video.id) || {}));
+    folders.forEach(folder => Object.assign(folder, folderThumbnailUsage.get(folder.id) || { thumbnail_count: 0, used_live_count: 0 }));
     res.json({
       success: true,
       videos,

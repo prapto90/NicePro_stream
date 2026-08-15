@@ -198,6 +198,10 @@
                         <p class="text-xs text-gray-400 mt-1">
                           <%= folder.item_count || 0 %> item<%= (folder.item_count || 0)===1 ? '' : 's' %>
                         </p>
+                        <div class="mt-2 flex flex-wrap gap-1 text-[10px]">
+                          <span class="px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300"><i class="ti ti-photo mr-1"></i><%= folder.thumbnail_count || 0 %> thumbnails</span>
+                          <span class="px-1.5 py-0.5 rounded bg-green-500/15 text-green-300"><i class="ti ti-broadcast mr-1"></i><%= folder.used_live_count || 0 %> used live</span>
+                        </div>
                       </div>
                     </a>
                     <% }); %>
@@ -1700,6 +1704,7 @@
         <div class="mt-4 min-w-0">
           <h3 class="font-medium text-sm text-white truncate">${escapeHtml(folder.name)}</h3>
           <p class="text-xs text-gray-400 mt-1">${folder.item_count || 0} item${(folder.item_count || 0) === 1 ? '' : 's'}</p>
+          <div class="mt-2 flex flex-wrap gap-1 text-[10px]"><span class="px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300"><i class="ti ti-photo mr-1"></i>${folder.thumbnail_count || 0} thumbnails</span><span class="px-1.5 py-0.5 rounded bg-green-500/15 text-green-300"><i class="ti ti-broadcast mr-1"></i>${folder.used_live_count || 0} used live</span></div>
         </div>
       </a>
     `;
@@ -1771,7 +1776,7 @@
           </div>
         </td>
         <td class="px-4 py-3 text-sm text-gray-500">--</td>
-        <td class="px-4 py-3 text-sm text-gray-400">${folder.item_count || 0} item${(folder.item_count || 0) === 1 ? '' : 's'}</td>
+        <td class="px-4 py-3 text-sm text-gray-400"><div>${folder.item_count || 0} item${(folder.item_count || 0) === 1 ? '' : 's'}</div><div class="mt-1 text-[10px] text-violet-300">${folder.thumbnail_count || 0} thumbnails · <span class="text-green-300">${folder.used_live_count || 0} used live</span></div></td>
         <td class="px-4 py-3 text-sm text-gray-400">${formatGalleryDate(folder.updated_at || folder.created_at)}</td>
         <td class="px-4 py-3 text-right">
           <div class="flex items-center justify-end gap-1">

@@ -156,6 +156,21 @@ class NewRotation {
     thumbnails.forEach(row => add(row.video_id, { new_rotation_thumbnail: 1, thumbnail_used_live: Number(row.used_live) }));
     return usage;
   }
+  static async getGalleryFolderThumbnailUsage(userId) {
+    const rows = await all(`SELECT v.folder_id,
+      COUNT(DISTINCT v.id) AS thumbnail_count,
+      COUNT(DISTINCT CASE WHEN r.id IS NOT NULL THEN v.id END) AS used_live_count
+      FROM videos v
+      LEFT JOIN new_rotation_used_thumbnails used ON used.video_id = v.id
+      LEFT JOIN new_rotations r ON r.id = used.rotation_id AND r.user_id = ?
+      WHERE v.user_id = ? AND v.folder_id IS NOT NULL
+        AND (LOWER(v.filepath) LIKE '%.jpg' OR LOWER(v.filepath) LIKE '%.jpeg' OR LOWER(v.filepath) LIKE '%.png' OR LOWER(v.filepath) LIKE '%.gif')
+      GROUP BY v.folder_id`, [userId, userId]);
+    return new Map(rows.map(row => [row.folder_id, {
+      thumbnail_count: Number(row.thumbnail_count || 0),
+      used_live_count: Number(row.used_live_count || 0)
+    }]));
+  }
   static markPreparedMedia(rotationId, videoId) { return run('INSERT OR IGNORE INTO new_rotation_prepared_media (id, rotation_id, video_id) VALUES (?, ?, ?)', [uuidv4(), rotationId, videoId]); }
   static removePreparedMedia(rotationId, videoId) { return run('DELETE FROM new_rotation_prepared_media WHERE rotation_id = ? AND video_id = ?', [rotationId, videoId]); }
   static getScheduleSlots(rotationId) { return all('SELECT * FROM new_rotation_schedule_slots WHERE rotation_id = ? ORDER BY day_of_week, start_time, order_index', [rotationId]); }
