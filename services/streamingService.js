@@ -522,15 +522,11 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
   }
 
   const concatFile = path.join(tempDir, `playlist_${stream.id}.txt`);
-  let content = '';
-  const loopCount = stream.loop_video ? 10000 : 1;
-
-  for (let i = 0; i < loopCount; i++) {
-    for (const vp of videoPaths) {
-      content += `file '${vp.replace(/\\/g, '/')}'\n`;
-    }
-  }
-  fs.writeFileSync(concatFile, content);
+  // Keep the concat list proportional to the playlist size. The previous
+  // approach repeated it 10,000 times in Node and could hit "Invalid string
+  // length" for large playlists. FFmpeg loops this input itself instead.
+  fs.writeFileSync(concatFile, videoPaths.map(vp => `file '${vp.replace(/\\/g, '/')}'\n`).join(''));
+  const loopInput = stream.loop_video ? ['-stream_loop', '-1'] : [];
 
   const hasAudio = playlist.audios && playlist.audios.length > 0;
 
@@ -543,6 +539,7 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
         '-re',
         '-fflags', '+genpts+igndts+discardcorrupt',
         '-avoid_negative_ts', 'make_zero',
+        ...loopInput,
         '-f', 'concat',
         '-safe', '0',
         '-i', concatFile,
@@ -566,6 +563,7 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
       '-re',
       '-fflags', '+genpts+igndts+discardcorrupt',
       '-avoid_negative_ts', 'make_zero',
+      ...loopInput,
       '-f', 'concat',
       '-safe', '0',
       '-i', concatFile,
@@ -606,13 +604,7 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
   }
 
   const audioConcatFile = path.join(tempDir, `playlist_audio_${stream.id}.txt`);
-  let audioContent = '';
-  for (let i = 0; i < 10000; i++) {
-    for (const ap of audioPaths) {
-      audioContent += `file '${ap.replace(/\\/g, '/')}'\n`;
-    }
-  }
-  fs.writeFileSync(audioConcatFile, audioContent);
+  fs.writeFileSync(audioConcatFile, audioPaths.map(ap => `file '${ap.replace(/\\/g, '/')}'\n`).join(''));
 
   if (!stream.use_advanced_settings) {
     return [
@@ -622,10 +614,12 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
       '-re',
       '-fflags', '+genpts+igndts+discardcorrupt',
       '-avoid_negative_ts', 'make_zero',
+      ...loopInput,
       '-f', 'concat',
       '-safe', '0',
       '-i', concatFile,
       '-re',
+      ...loopInput,
       '-f', 'concat',
       '-safe', '0',
       '-i', audioConcatFile,
@@ -650,10 +644,12 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
     '-re',
     '-fflags', '+genpts+igndts+discardcorrupt',
     '-avoid_negative_ts', 'make_zero',
+    ...loopInput,
     '-f', 'concat',
     '-safe', '0',
     '-i', concatFile,
     '-re',
+    ...loopInput,
     '-f', 'concat',
     '-safe', '0',
     '-i', audioConcatFile,
