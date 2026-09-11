@@ -313,9 +313,40 @@ async function deleteYouTubeBroadcast(streamId) {
   }
 }
 
+async function getYouTubeBroadcastStatus(streamId) {
+  const stream = await Stream.findById(streamId);
+  if (!stream?.is_youtube_api || !stream.youtube_broadcast_id) {
+    return { success: false, error: 'No YouTube broadcast configured for this stream' };
+  }
+  const user = await User.findById(stream.user_id);
+  if (!user?.youtube_client_id || !user.youtube_client_secret) {
+    return { success: false, error: 'YouTube credentials are unavailable' };
+  }
+  let channel = stream.youtube_channel_id ? await YoutubeChannel.findById(stream.youtube_channel_id) : null;
+  if (!channel) channel = await YoutubeChannel.findDefault(stream.user_id);
+  if (!channel?.access_token) return { success: false, error: 'YouTube channel is unavailable' };
+
+  const oauth2Client = getYouTubeOAuth2Client(
+    user.youtube_client_id,
+    decrypt(user.youtube_client_secret),
+    user.youtube_redirect_uri || `${process.env.BASE_URL || `http://localhost:${process.env.PORT || 7575}`}/auth/youtube/callback`
+  );
+  oauth2Client.setCredentials({
+    access_token: decrypt(channel.access_token),
+    refresh_token: decrypt(channel.refresh_token)
+  });
+  const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+  const response = await youtube.liveBroadcasts.list({ part: ['status'], id: stream.youtube_broadcast_id });
+  const broadcast = response.data.items?.[0];
+  return broadcast
+    ? { success: true, lifeCycleStatus: broadcast.status?.lifeCycleStatus || 'unknown' }
+    : { success: true, lifeCycleStatus: 'not_found' };
+}
+
 module.exports = {
   createYouTubeBroadcast,
   deleteYouTubeBroadcast,
+  getYouTubeBroadcastStatus,
   getYouTubeOAuth2Client,
   syncBroadcastMonetization
 };

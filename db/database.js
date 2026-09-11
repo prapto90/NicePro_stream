@@ -55,6 +55,9 @@ function createTables() {
         resolution TEXT,
         bitrate INTEGER,
         fps TEXT,
+        audio_health_status TEXT DEFAULT 'unknown',
+        audio_health_error TEXT,
+        audio_health_checked_at TIMESTAMP,
         user_id TEXT,
         folder_id TEXT,
         upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -382,6 +385,7 @@ function createTables() {
         privacy TEXT DEFAULT 'unlisted',
         category TEXT DEFAULT '22',
         youtube_monetization INTEGER DEFAULT 0,
+        unlist_replay_after_live INTEGER DEFAULT 0,
         youtube_channel_id TEXT,
         youtube_playlist_id TEXT,
         status TEXT DEFAULT 'inactive',
@@ -443,7 +447,7 @@ function createTables() {
       db.run(`ALTER TABLE new_rotations ADD COLUMN live_count INTEGER DEFAULT 0`, (err) => {
         if (err && !err.message.includes('duplicate column name')) console.error('Error adding live_count column:', err.message);
       });
-      for (const column of ['youtube_playlist_id TEXT', 'disable_used_titles INTEGER DEFAULT 0', 'disable_used_thumbnails INTEGER DEFAULT 0']) {
+      for (const column of ['youtube_playlist_id TEXT', 'disable_used_titles INTEGER DEFAULT 0', 'disable_used_thumbnails INTEGER DEFAULT 0', 'unlist_replay_after_live INTEGER DEFAULT 0']) {
         db.run(`ALTER TABLE new_rotations ADD COLUMN ${column}`, err => {
           if (err && !err.message.includes('duplicate column name')) console.error(`Error adding new_rotations column: ${err.message}`);
         });
@@ -473,6 +477,9 @@ function createTables() {
       db.run(`ALTER TABLE videos ADD COLUMN original_filepath TEXT`, () => {});
       db.run(`ALTER TABLE videos ADD COLUMN rotation_ready INTEGER DEFAULT 0`, () => {});
       db.run(`ALTER TABLE videos ADD COLUMN rotation_ready_profile TEXT`, () => {});
+      db.run(`ALTER TABLE videos ADD COLUMN audio_health_status TEXT DEFAULT 'unknown'`, () => {});
+      db.run(`ALTER TABLE videos ADD COLUMN audio_health_error TEXT`, () => {});
+      db.run(`ALTER TABLE videos ADD COLUMN audio_health_checked_at TIMESTAMP`, () => {});
 
       db.run(`ALTER TABLE streams ADD COLUMN is_youtube_api INTEGER DEFAULT 0`, (err) => {
         if (err && !err.message.includes('duplicate column name')) {

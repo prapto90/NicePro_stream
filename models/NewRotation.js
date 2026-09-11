@@ -71,10 +71,10 @@ class NewRotation {
   static async create(data, thumbnailVideoIds) {
     const id = uuidv4();
     await run(`INSERT INTO new_rotations (id, user_id, name, video_id, title_category_id, description, tags, privacy, category,
-      youtube_monetization, youtube_channel_id, youtube_playlist_id, start_time, end_time, repeat_mode, repeat_days, disable_used_titles, disable_used_thumbnails)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      youtube_monetization, unlist_replay_after_live, youtube_channel_id, youtube_playlist_id, start_time, end_time, repeat_mode, repeat_days, disable_used_titles, disable_used_thumbnails)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, data.user_id, data.name, data.video_id, data.title_category_id, data.description || '', data.tags || '',
-        data.privacy || 'unlisted', data.category || '22', data.youtube_monetization ? 1 : 0, data.youtube_channel_id || null, data.youtube_playlist_id || null,
+        data.privacy || 'unlisted', data.category || '22', data.youtube_monetization ? 1 : 0, data.unlist_replay_after_live ? 1 : 0, data.youtube_channel_id || null, data.youtube_playlist_id || null,
         data.start_time, data.end_time, data.repeat_mode || 'daily', data.repeat_days || '', data.disable_used_titles ? 1 : 0, data.disable_used_thumbnails ? 1 : 0]);
     for (let i = 0; i < thumbnailVideoIds.length; i++) {
       await run('INSERT INTO new_rotation_thumbnails (id, rotation_id, video_id, order_index) VALUES (?, ?, ?, ?)', [uuidv4(), id, thumbnailVideoIds[i], i]);

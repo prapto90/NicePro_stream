@@ -3,6 +3,7 @@ const path = require('path');
 const NewRotation = require('../models/NewRotation');
 const Video = require('../models/Video');
 const Playlist = require('../models/Playlist');
+const { validatePlaylistAudioHealth } = require('./streamingService');
 const { normalizeVideoForRotation } = require('../utils/videoProcessor');
 const running = new Set();
 let workerBusy = false;
@@ -40,7 +41,13 @@ async function prepare(rotationId) {
     const rotation = await NewRotation.findById(rotationId); if (!rotation) return;
     await NewRotation.update(rotationId, { preparation_status: 'processing', preparation_error: null });
     let videos = [];
-    if (String(rotation.video_id).startsWith('playlist:')) { const playlist = await Playlist.findByIdWithVideos(rotation.video_id.slice(9)); videos = playlist?.videos || []; }
+    if (String(rotation.video_id).startsWith('playlist:')) {
+      const playlist = await Playlist.findByIdWithVideos(rotation.video_id.slice(9));
+      videos = playlist?.videos || [];
+      // Validate unknown audio in the preparation worker, not at the exact
+      // live slot. Cached Ready/Problem results make subsequent starts fast.
+      if (playlist?.audios?.length) await validatePlaylistAudioHealth(playlist);
+    }
     else { const video = await Video.findById(rotation.video_id); if (video) videos = [video]; }
     if (!videos.length) throw new Error('No video source found');
     const currentIds = new Set(videos.map(video => video.id));

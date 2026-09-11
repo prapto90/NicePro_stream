@@ -110,6 +110,7 @@
                 <option value="all">All Media</option>
                 <option value="video">Video</option>
                 <option value="audio">Audio</option>
+                <option value="audio-problem">Audio Problem</option>
                 <option value="image">Thumbnail</option>
                 <option value="used-live">Used Live</option>
               </select>
@@ -1716,10 +1717,14 @@
           const mediaType = isAudio ? 'audio' : isImage ? 'image' : 'video';
           const thumbnail = escapeHtml(video.thumbnail_path || '/images/default-video-thumbnail.svg');
           const title = escapeHtml(video.title || '');
+          const audioHealthBadge = isAudio && video.audio_health_status === 'problem'
+            ? `<span title="${escapeHtml(video.audio_health_error || 'Audio cannot be used for Rotation')}" class="absolute top-9 left-2 bg-red-600/95 text-white text-xs px-1.5 py-0.5 rounded"><i class="ti ti-alert-triangle text-xs mr-1"></i>Audio Problem</span>`
+            : isAudio && video.audio_health_status === 'ready'
+              ? `<span class="absolute top-9 left-2 bg-green-600/90 text-white text-xs px-1.5 py-0.5 rounded"><i class="ti ti-circle-check text-xs mr-1"></i>Rotation Ready</span>` : '';
           return `
       <div class="gallery-grid-item file-item gallery-playable group bg-dark-700 rounded-lg overflow-hidden border border-transparent hover:border-gray-600 hover:bg-dark-600 transition-all cursor-pointer relative"
         data-id="${escapeHtml(video.id)}" data-kind="file" data-title="${title}" data-date="${escapeHtml(video.upload_date || video.created_at || '')}" data-size="${Number(video.file_size || 0)}" data-type="${mediaType}"
-        data-media-type="${mediaType}" data-media-title="${title}" data-used-live="${video.thumbnail_used_live ? '1' : '0'}" draggable="true">
+        data-media-type="${mediaType}" data-media-title="${title}" data-used-live="${video.thumbnail_used_live ? '1' : '0'}" data-audio-health="${escapeHtml(video.audio_health_status || 'unknown')}" draggable="true">
         <div class="absolute top-3 left-3 z-10">
           <label class="inline-flex items-center gap-2 cursor-pointer" onclick="event.stopPropagation()">
             <input type="checkbox" class="gallery-select-checkbox opacity-0 absolute" data-item-id="${escapeHtml(video.id)}">
@@ -1740,6 +1745,7 @@
           </div>
           ${!isImage ? `<span class="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">${formatDuration(video.duration)}</span>` : ''}
           ${isAudio ? `<span class="absolute top-2 left-2 bg-primary/80 text-white text-xs px-1.5 py-0.5 rounded"><i class="ti ti-music text-xs mr-1"></i>Audio</span>` : ''}
+          ${audioHealthBadge}
           ${isImage ? `<span class="absolute top-2 left-2 bg-emerald-600/90 text-white text-xs px-1.5 py-0.5 rounded"><i class="ti ti-photo text-xs mr-1"></i>Thumbnail</span>` : ''}
           ${newRotationBadgesMarkup(video)}
         </div>
@@ -1798,10 +1804,14 @@
           const mediaType = isAudio ? 'audio' : isImage ? 'image' : 'video';
           const title = escapeHtml(video.title || '');
           const thumbnail = escapeHtml(video.thumbnail_path || '/images/default-video-thumbnail.svg');
+          const audioHealthBadge = isAudio && video.audio_health_status === 'problem'
+            ? `<span title="${escapeHtml(video.audio_health_error || 'Audio cannot be used for Rotation')}" class="text-[10px] px-1.5 py-0.5 rounded bg-red-600/90 text-white"><i class="ti ti-alert-triangle mr-1"></i>Audio Problem</span>`
+            : isAudio && video.audio_health_status === 'ready'
+              ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-green-600/80 text-white"><i class="ti ti-circle-check mr-1"></i>Ready</span>` : '';
           return `
       <tr class="gallery-list-item file-item-row gallery-playable group hover:bg-dark-700 transition-colors cursor-pointer"
         data-id="${escapeHtml(video.id)}" data-kind="file" data-title="${title}" data-date="${escapeHtml(video.upload_date || video.created_at || '')}" data-size="${Number(video.file_size || 0)}" data-type="${mediaType}"
-        data-media-type="${mediaType}" data-media-title="${title}" data-used-live="${video.thumbnail_used_live ? '1' : '0'}" draggable="true">
+        data-media-type="${mediaType}" data-media-title="${title}" data-used-live="${video.thumbnail_used_live ? '1' : '0'}" data-audio-health="${escapeHtml(video.audio_health_status || 'unknown')}" draggable="true">
         <td class="px-4 py-3">
           <div class="flex items-center gap-3">
             <label class="inline-flex items-center gap-2 cursor-pointer" onclick="event.stopPropagation()">
@@ -1813,6 +1823,7 @@
             </div>
             <div class="flex items-center gap-2 min-w-0">
               <span class="font-medium text-sm truncate max-w-xs">${title}</span>
+              ${audioHealthBadge}
               ${newRotationListBadgesMarkup(video)}
             </div>
           </div>
@@ -2151,7 +2162,8 @@
             size: parseInt(item.dataset.size) || 0,
             type: item.dataset.type || 'video',
             kind: item.dataset.kind || 'file',
-            usedLive: item.dataset.usedLive === '1'
+            usedLive: item.dataset.usedLive === '1',
+            audioHealth: item.dataset.audioHealth || 'unknown'
           };
         }
 
@@ -2175,7 +2187,7 @@
             const matchesSearch = data.title.toLowerCase().includes(search);
             const matchesType = data.kind === 'folder'
               ? type === 'all'
-              : type === 'all' || (type === 'used-live' ? data.usedLive : data.type === type);
+              : type === 'all' || (type === 'used-live' ? data.usedLive : type === 'audio-problem' ? (data.type === 'audio' && data.audioHealth === 'problem') : data.type === type);
             return matchesSearch && matchesType;
           };
 

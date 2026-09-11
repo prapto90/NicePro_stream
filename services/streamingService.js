@@ -35,19 +35,29 @@ function shuffleArray(array) {
 const activeStreams = new Map();
 const streamLogs = new Map();
 const streamRetryCount = new Map();
+const youtubeHealthCheckAt = new Map();
 const manuallyStoppingStreams = new Set();
 const startingStreams = new Set();
 
 const MAX_LOG_LINES = 50;
+const FFMPEG_LOG_DIRECTORY = path.join(__dirname, '..', 'logs', 'ffmpeg');
+const FFMPEG_LOG_READ_BYTES = 64 * 1024;
 const MAX_RETRY_ATTEMPTS = 15;
 const BASE_RETRY_DELAY = 2000;
 const MAX_RETRY_DELAY = 30000;
 const HEALTH_CHECK_INTERVAL = 30000;
+const YOUTUBE_BROADCAST_CHECK_INTERVAL = 2 * 60 * 1000;
 const SYNC_INTERVAL = 60000;
 const STREAM_START_TIMEOUT = 15000;
 
 const YOUTUBE_COPY_ALLOWED_VIDEO_CODECS = new Set(['h264']);
 const YOUTUBE_COPY_ALLOWED_AUDIO_CODECS = new Set(['aac', 'mp3']);
+
+// A separately-looped audio concat input restarts its packet timestamps on a
+// loop boundary. Copying those packets into FLV produces non-monotonic DTS and
+// can make YouTube close the RTMP ingest. Decode/re-encode only that audio so
+// its output timestamp is rebuilt from the continuous sample count.
+const CONTINUOUS_AUDIO_FILTER = 'aresample=async=1:first_pts=0,asetpts=N/SR/TB';
 
 let schedulerService = null;
 let syncIntervalId = null;
@@ -76,12 +86,44 @@ function addStreamLog(streamId, message) {
   }
 }
 
+function getFFmpegLogPath(streamId) {
+  return path.join(FFMPEG_LOG_DIRECTORY, `${streamId}.log`);
+}
+
+function prepareFFmpegLog(streamId, isRetry) {
+  const logPath = getFFmpegLogPath(streamId);
+  fs.mkdirSync(FFMPEG_LOG_DIRECTORY, { recursive: true });
+  if (!isRetry && fs.existsSync(logPath)) {
+    const previousPath = `${logPath}.previous`;
+    try { fs.renameSync(logPath, previousPath); } catch (_) { fs.truncateSync(logPath, 0); }
+  }
+  fs.appendFileSync(logPath, `\n[${new Date().toISOString()}] Starting FFmpeg${isRetry ? ' retry' : ''}\n`);
+  return logPath;
+}
+
+function readRecentFFmpegLogs(streamId) {
+  const logPath = getFFmpegLogPath(streamId);
+  try {
+    const stats = fs.statSync(logPath);
+    const bytes = Math.min(stats.size, FFMPEG_LOG_READ_BYTES);
+    const buffer = Buffer.alloc(bytes);
+    const fd = fs.openSync(logPath, 'r');
+    fs.readSync(fd, buffer, 0, bytes, Math.max(0, stats.size - bytes));
+    fs.closeSync(fd);
+    return buffer.toString('utf8').split(/\r?\n/).filter(Boolean).slice(-MAX_LOG_LINES)
+      .map(message => ({ timestamp: null, message: `[FFmpeg] ${message}` }));
+  } catch (_) {
+    return [];
+  }
+}
+
 function getStreamLogs(streamId) {
-  return streamLogs.get(streamId) || [];
+  return [...(streamLogs.get(streamId) || []), ...readRecentFFmpegLogs(streamId)].slice(-MAX_LOG_LINES);
 }
 
 function cleanupStreamData(streamId) {
   streamRetryCount.delete(streamId);
+  youtubeHealthCheckAt.delete(streamId);
   manuallyStoppingStreams.delete(streamId);
   startingStreams.delete(streamId);
 }
@@ -193,6 +235,24 @@ function isPidRunning(pid) {
   }
 }
 
+function getProcessSocketStates(pid) {
+  if (process.platform !== 'linux' || !pid) return Promise.resolve([]);
+  return new Promise(resolve => {
+    const checker = spawn('ss', ['-tanp'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    let output = '';
+    checker.stdout.on('data', chunk => { output += chunk.toString(); });
+    checker.on('error', () => resolve([]));
+    checker.on('close', () => {
+      const pidPattern = new RegExp(`pid=${Number(pid)}(?:,|\\))`);
+      const states = output.split(/\r?\n/)
+        .filter(line => pidPattern.test(line))
+        .map(line => line.trim().split(/\s+/)[0])
+        .filter(Boolean);
+      resolve(states);
+    });
+  });
+}
+
 // On the VPS (Linux), /proc exposes the command line exactly as it was
 // launched.  A PID alone is never trusted because Linux can reuse a PID.
 function verifyManagedFFmpeg(pid, token) {
@@ -247,7 +307,7 @@ async function persistManagedProcess(streamId, pid, token) {
   });
 }
 
-function launchManagedFFmpeg(ffmpegArgs) {
+function launchManagedFFmpeg(ffmpegArgs, logPath) {
   const launcherPath = path.join(__dirname, 'ffmpegManagedLauncher.js');
   return new Promise((resolve, reject) => {
     const launcher = spawn(process.execPath, [launcherPath], {
@@ -271,7 +331,7 @@ function launchManagedFFmpeg(ffmpegArgs) {
         reject(error);
       }
     });
-    launcher.stdin.end(JSON.stringify({ ffmpegPath, args: ffmpegArgs }));
+    launcher.stdin.end(JSON.stringify({ ffmpegPath, args: ffmpegArgs, logPath }));
   });
 }
 
@@ -357,6 +417,75 @@ function validateYouTubeCopyAudioProbe(probeData, label) {
   return null;
 }
 
+function checkAudioDecode(filePath) {
+  return new Promise((resolve, reject) => {
+    const decoder = spawn(ffmpegPath, [
+      '-nostdin', '-v', 'error', '-xerror', '-i', filePath,
+      '-map', '0:a:0', '-f', 'null', '-'
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let errors = '';
+    decoder.stderr.on('data', chunk => { errors += chunk.toString(); });
+    decoder.on('error', reject);
+    decoder.on('close', code => {
+      if (code === 0) return resolve();
+      reject(new Error(errors.trim().split(/\r?\n/).slice(-3).join(' ') || `FFmpeg audio check exited with code ${code}`));
+    });
+  });
+}
+
+async function checkPlaylistAudioHealth(audio, index) {
+  const label = buildMediaLabel(audio, index, 'Audio');
+  // A successful full decode is immutable while the Gallery file is unchanged.
+  // Reuse the stored result at live-start, so a 200-song playlist does not
+  // delay every daily Rotation.
+  if (audio.audio_health_status === 'ready') return { valid: true, audio, cached: true };
+  if (audio.audio_health_status === 'problem') {
+    return { valid: false, audio, reason: audio.audio_health_error || 'Audio previously failed validation', cached: true };
+  }
+  try {
+    const filePath = resolvePublicFilePath(audio.filepath);
+    if (!fs.existsSync(filePath)) throw new Error('File audio tidak ditemukan');
+    const probeData = await runFFprobe(filePath);
+    if (!getPrimaryStream(probeData, 'audio')) throw new Error('Audio stream tidak ditemukan');
+    // Decode every packet once before live. This detects corrupt files that a
+    // header-only ffprobe check cannot see; no file is created or modified.
+    await checkAudioDecode(filePath);
+    await Video.update(audio.id, {
+      audio_health_status: 'ready',
+      audio_health_error: null,
+      audio_health_checked_at: new Date().toISOString()
+    });
+    return { valid: true, audio };
+  } catch (error) {
+    const reason = error.message || 'Audio tidak dapat dibaca';
+    await Video.update(audio.id, {
+      audio_health_status: 'problem',
+      audio_health_error: reason.slice(0, 1000),
+      audio_health_checked_at: new Date().toISOString()
+    });
+    console.warn(`[StreamingService] ${label} skipped: ${reason}`);
+    return { valid: false, audio, reason };
+  }
+}
+
+async function validatePlaylistAudioHealth(playlist) {
+  const audios = playlist.audios || [];
+  if (!audios.length) return;
+  const results = [];
+  for (let index = 0; index < audios.length; index++) {
+    results.push(await checkPlaylistAudioHealth(audios[index], index));
+  }
+  const validAudios = results.filter(result => result.valid).map(result => result.audio);
+  const failed = results.filter(result => !result.valid);
+  playlist.audios = validAudios;
+  if (!validAudios.length) {
+    throw new Error(`Semua ${audios.length} audio playlist bermasalah. Periksa Gallery dengan filter Audio Problem.`);
+  }
+  if (failed.length) {
+    console.warn(`[StreamingService] Playlist ${playlist.name || playlist.id}: skipped ${failed.length}/${audios.length} audio problem(s)`);
+  }
+}
+
 function validatePlaylistCopyConsistency(referenceStream, currentStream, label) {
   const mismatches = [];
 
@@ -432,16 +561,7 @@ async function validateCopyModeCompatibilityForInput({
       }
     }
 
-    for (let index = 0; index < (playlist.audios || []).length; index++) {
-      const audio = playlist.audios[index];
-      const probeData = await runFFprobe(resolvePublicFilePath(audio.filepath));
-      const label = buildMediaLabel(audio, index, 'Audio');
-      const compatibilityError = validateYouTubeCopyAudioProbe(probeData, label);
-
-      if (compatibilityError) {
-        throw createUnsupportedCopyModeError(compatibilityError);
-      }
-    }
+    await validatePlaylistAudioHealth(playlist);
 
     return;
   }
@@ -528,14 +648,21 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
   fs.writeFileSync(concatFile, videoPaths.map(vp => `file '${vp.replace(/\\/g, '/')}'\n`).join(''));
   const loopInput = stream.loop_video ? ['-stream_loop', '-1'] : [];
 
-  const hasAudio = playlist.audios && playlist.audios.length > 0;
+  const configuredAudios = playlist.audios || [];
+  // validatePlaylistAudioHealth runs before this builder for YouTube copy mode.
+  // Keep only files that passed that check, even though the Playlist model is
+  // fetched again here.
+  const usableAudios = configuredAudios.filter(audio => audio.audio_health_status !== 'problem');
+  if (configuredAudios.length && !usableAudios.length) {
+    throw new Error('Semua audio playlist bermasalah. Periksa Gallery dengan filter Audio Problem.');
+  }
+  const hasAudio = usableAudios.length > 0;
 
   if (!hasAudio) {
     if (!stream.use_advanced_settings) {
       return [
         '-nostdin',
         '-loglevel', 'warning',
-        '-stats',
         '-re',
         '-fflags', '+genpts+igndts+discardcorrupt',
         '-avoid_negative_ts', 'make_zero',
@@ -559,7 +686,6 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
     return [
       '-nostdin',
       '-loglevel', 'warning',
-      '-stats',
       '-re',
       '-fflags', '+genpts+igndts+discardcorrupt',
       '-avoid_negative_ts', 'make_zero',
@@ -592,7 +718,7 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
   }
 
   let audioPaths = [];
-  const audios = playlist.is_shuffle ? shuffleArray(playlist.audios) : playlist.audios;
+  const audios = playlist.is_shuffle ? shuffleArray(usableAudios) : usableAudios;
 
   for (const audio of audios) {
     const relPath = audio.filepath.startsWith('/') ? audio.filepath.substring(1) : audio.filepath;
@@ -610,7 +736,6 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
     return [
       '-nostdin',
       '-loglevel', 'warning',
-      '-stats',
       '-re',
       '-fflags', '+genpts+igndts+discardcorrupt',
       '-avoid_negative_ts', 'make_zero',
@@ -626,7 +751,11 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
       '-map', '0:v:0',
       '-map', '1:a:0',
       '-c:v', 'copy',
-      '-c:a', 'copy',
+      '-af', CONTINUOUS_AUDIO_FILTER,
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-ar', '44100',
+      '-ac', '2',
       '-f', 'flv',
       '-flvflags', 'no_duration_filesize',
       rtmpUrl
@@ -640,7 +769,6 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
   return [
     '-nostdin',
     '-loglevel', 'warning',
-    '-stats',
     '-re',
     '-fflags', '+genpts+igndts+discardcorrupt',
     '-avoid_negative_ts', 'make_zero',
@@ -669,7 +797,11 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
     '-sc_threshold', '0',
     '-s', resolution,
     '-r', String(fps),
-    '-c:a', 'copy',
+    '-af', CONTINUOUS_AUDIO_FILTER,
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-ar', '44100',
+    '-ac', '2',
     '-f', 'flv',
     '-flvflags', 'no_duration_filesize',
     rtmpUrl
@@ -707,7 +839,6 @@ async function buildFFmpegArgs(stream) {
     return [
       '-nostdin',
       '-loglevel', 'warning',
-      '-stats',
       '-re',
       '-fflags', '+genpts+igndts+discardcorrupt',
       '-avoid_negative_ts', 'make_zero',
@@ -729,7 +860,6 @@ async function buildFFmpegArgs(stream) {
   return [
     '-nostdin',
     '-loglevel', 'warning',
-    '-stats',
     '-re',
     '-fflags', '+genpts+igndts+discardcorrupt',
     '-avoid_negative_ts', 'make_zero',
@@ -911,11 +1041,13 @@ async function startStream(streamId, isRetry = false, baseUrl = null) {
     ffmpegArgs.push('-metadata', `${MANAGED_FFMPEG_TOKEN_PREFIX}${processToken}`, outputUrl);
 
     addStreamLog(streamId, `Starting managed FFmpeg process`);
+    const ffmpegLogPath = prepareFFmpegLog(streamId, isRetry);
+    addStreamLog(streamId, `FFmpeg warnings/errors: ${ffmpegLogPath}`);
 
     // The short-lived launcher exits after it creates FFmpeg. This prevents
     // PM2 from seeing FFmpeg as a child of the Node process and tree-killing
     // it during `pm2 restart`.
-    const managedFfmpegPid = await launchManagedFFmpeg(ffmpegArgs);
+    const managedFfmpegPid = await launchManagedFFmpeg(ffmpegArgs, ffmpegLogPath);
     const ffmpegProcess = null;
 
     let startTimeIso;
@@ -1345,6 +1477,50 @@ async function healthCheckStreams() {
             await Stream.updateStatus(streamId, 'offline', stream.user_id, { preserveEndTime: true });
           }
           cleanupStreamData(streamId);
+          continue;
+        }
+        // A process can survive after YouTube has closed the RTMP TCP side.
+        // CLOSE-WAIT is conclusive: the remote peer sent FIN and FFmpeg has
+        // not released the socket, so it cannot be a healthy live ingest.
+        const socketStates = await getProcessSocketStates(streamData.pid);
+        if (socketStates.includes('CLOSE-WAIT')) {
+          const stream = await Stream.findById(streamId);
+          addStreamLog(streamId, `RTMP transport failure: FFmpeg PID ${streamData.pid} has CLOSE-WAIT socket state. YouTube/network closed the connection; stopping the stale encoder.`);
+          console.error(`[StreamingService] FFmpeg ${streamData.pid} for stream ${streamId} is stuck in CLOSE-WAIT`);
+          manuallyStoppingStreams.add(streamId);
+          await killFFmpegProcess(streamId, streamData);
+          activeStreams.delete(streamId);
+          manuallyStoppingStreams.delete(streamId);
+          await clearManagedProcess(streamId);
+          if (stream?.status === 'live') await Stream.updateStatus(streamId, 'offline', stream.user_id, { preserveEndTime: true });
+          cleanupStreamData(streamId);
+          continue;
+        }
+        if ((youtubeHealthCheckAt.get(streamId) || 0) + YOUTUBE_BROADCAST_CHECK_INTERVAL <= now) {
+          youtubeHealthCheckAt.set(streamId, now);
+          const stream = await Stream.findById(streamId);
+          if (stream?.is_youtube_api && stream.youtube_broadcast_id && stream.status === 'live') {
+            try {
+              const youtubeService = require('./youtubeService');
+              const result = await youtubeService.getYouTubeBroadcastStatus(streamId);
+              if (!result.success) {
+                addStreamLog(streamId, `YouTube broadcast health check unavailable: ${result.error}`);
+              } else if (['complete', 'revoked', 'not_found'].includes(result.lifeCycleStatus)) {
+                addStreamLog(streamId, `YouTube broadcast ended unexpectedly (${result.lifeCycleStatus}) while FFmpeg PID ${streamData.pid} was still running. Stopping FFmpeg.`);
+                console.error(`[StreamingService] YouTube broadcast ${stream.youtube_broadcast_id} is ${result.lifeCycleStatus} while FFmpeg ${streamData.pid} is still running for stream ${streamId}`);
+                manuallyStoppingStreams.add(streamId);
+                await killFFmpegProcess(streamId, streamData);
+                activeStreams.delete(streamId);
+                manuallyStoppingStreams.delete(streamId);
+                await clearManagedProcess(streamId);
+                await Stream.updateStatus(streamId, 'offline', stream.user_id, { preserveEndTime: true });
+                cleanupStreamData(streamId);
+              }
+            } catch (error) {
+              // API/network errors must never stop a healthy FFmpeg process.
+              addStreamLog(streamId, `YouTube broadcast health check error: ${error.message}`);
+            }
+          }
         }
         continue;
       }
@@ -1498,6 +1674,7 @@ module.exports = {
   startStream,
   stopStream,
   validateCopyModeCompatibilityForInput,
+  validatePlaylistAudioHealth,
   isStreamActive,
   isStreamStarting,
   getActiveStreams,

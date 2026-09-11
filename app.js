@@ -4595,6 +4595,27 @@ app.get('/new-rotation-title-warehouse', isAuthenticated, async (req, res) => {
   }
 });
 
+// The New Rotation editor requests this again when its thumbnail picker opens.
+// Gallery can change while the page is still open, so do not rely only on the
+// folder/image snapshot used when the page was first rendered.
+app.get('/api/new-rotations/thumbnail-folders', isAuthenticated, async (req, res) => {
+  try {
+    const [allVideos, folders] = await Promise.all([
+      Video.findAll(req.session.userId),
+      MediaFolder.findAllByUser(req.session.userId)
+    ]);
+    const thumbnailFolders = folders.map(folder => ({
+      id: folder.id,
+      name: folder.name,
+      images: allVideos.filter(video => video.folder_id === folder.id && isImageMediaPath(video.filepath))
+    })).filter(folder => folder.images.length > 0);
+    res.json({ success: true, thumbnailFolders });
+  } catch (error) {
+    console.error('New Rotation thumbnail folder list error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.get('/api/new-rotations/categories', isAuthenticated, async (req, res) => {
   try { res.json({ success: true, categories: await NewRotation.getCategories(req.session.userId) }); }
   catch (error) { res.status(500).json({ success: false, error: error.message }); }
@@ -4602,8 +4623,10 @@ app.get('/api/new-rotations/categories', isAuthenticated, async (req, res) => {
 app.get('/api/new-rotations/youtube-playlists/:channelId', isAuthenticated, async (req, res) => {
   try {
     const YoutubeChannel = require('./models/YoutubeChannel');
-    const channel = await YoutubeChannel.findById(req.params.channelId);
     const user = await User.findById(req.session.userId);
+    const channel = req.params.channelId === 'default'
+      ? await YoutubeChannel.findDefault(req.session.userId)
+      : await YoutubeChannel.findById(req.params.channelId);
     if (!channel || channel.user_id !== req.session.userId || !channel.access_token) return res.status(404).json({ success: false, error: 'YouTube channel not found' });
     const oauth = new google.auth.OAuth2(user.youtube_client_id, decrypt(user.youtube_client_secret), user.youtube_redirect_uri || `${req.protocol}://${req.get('host')}/auth/youtube/callback`);
     oauth.setCredentials({ access_token: decrypt(channel.access_token), refresh_token: decrypt(channel.refresh_token) });
@@ -4640,7 +4663,7 @@ app.delete('/api/new-rotations/titles/:id', isAuthenticated, async (req, res) =>
 });
 app.post('/api/new-rotations', isAuthenticated, async (req, res) => {
   try {
-    const { name, video_id, title_category_id, description, tags, privacy, category, youtube_monetization, youtube_channel_id, youtube_playlist_id, disable_used_titles, disable_used_thumbnails, start_time, end_time, repeat_mode, repeat_days, schedule_slots, thumbnail_video_ids } = req.body;
+    const { name, video_id, title_category_id, description, tags, privacy, category, youtube_monetization, unlist_replay_after_live, youtube_channel_id, youtube_playlist_id, disable_used_titles, disable_used_thumbnails, start_time, end_time, repeat_mode, repeat_days, schedule_slots, thumbnail_video_ids } = req.body;
     const thumbnails = Array.isArray(thumbnail_video_ids) ? thumbnail_video_ids : [];
     const weeklySlots = normalizeWeeklyScheduleSlots(schedule_slots);
     const primarySlot = weeklySlots[0];
@@ -4668,7 +4691,7 @@ app.post('/api/new-rotations', isAuthenticated, async (req, res) => {
     const selectedDays = (weeklySlots.length ? weeklySlots.map(slot => slot.day_of_week) : (Array.isArray(repeat_days) ? repeat_days : (repeat_days === undefined ? [] : [repeat_days])))
       .map(Number).filter(day => Number.isInteger(day) && day >= 0 && day <= 6);
     if (safeRepeatMode === 'weekly' && !selectedDays.length) return res.status(400).json({ success: false, error: 'Select at least one day for Every Week' });
-    const rotation = await NewRotation.create({ user_id: req.session.userId, name, video_id, title_category_id, description, tags, privacy, category, youtube_monetization: youtube_monetization === true, youtube_channel_id, youtube_playlist_id, disable_used_titles: disable_used_titles === true, disable_used_thumbnails: disable_used_thumbnails === true, ...schedule, repeat_mode: safeRepeatMode, repeat_days: selectedDays.join(',') }, thumbnails);
+    const rotation = await NewRotation.create({ user_id: req.session.userId, name, video_id, title_category_id, description, tags, privacy, category, youtube_monetization: youtube_monetization === true, unlist_replay_after_live: unlist_replay_after_live === true, youtube_channel_id, youtube_playlist_id, disable_used_titles: disable_used_titles === true, disable_used_thumbnails: disable_used_thumbnails === true, ...schedule, repeat_mode: safeRepeatMode, repeat_days: selectedDays.join(',') }, thumbnails);
     if (safeRepeatMode === 'weekly' && weeklySlots.length) await NewRotation.replaceScheduleSlots(rotation.id, weeklySlots);
     newRotationPreparationService.prepare(rotation.id);
     res.json({ success: true, rotation });
@@ -4686,7 +4709,7 @@ app.put('/api/new-rotations/:id', isAuthenticated, async (req, res) => {
     const existing = await NewRotation.findById(req.params.id);
     if (!existing || existing.user_id !== req.session.userId) return res.status(404).json({ success: false, error: 'New Rotation not found' });
     if (existing.status === 'active') return res.status(400).json({ success: false, error: 'Stop the active rotation before editing it' });
-    const { name, video_id, title_category_id, description, tags, privacy, category, youtube_monetization, youtube_channel_id, youtube_playlist_id, disable_used_titles, disable_used_thumbnails, start_time, end_time, repeat_mode, repeat_days, schedule_slots, thumbnail_video_ids } = req.body;
+    const { name, video_id, title_category_id, description, tags, privacy, category, youtube_monetization, unlist_replay_after_live, youtube_channel_id, youtube_playlist_id, disable_used_titles, disable_used_thumbnails, start_time, end_time, repeat_mode, repeat_days, schedule_slots, thumbnail_video_ids } = req.body;
     const thumbnails = Array.isArray(thumbnail_video_ids) ? thumbnail_video_ids : [];
     const weeklySlots = normalizeWeeklyScheduleSlots(schedule_slots);
     const primarySlot = weeklySlots[0];
@@ -4708,7 +4731,7 @@ app.put('/api/new-rotations/:id', isAuthenticated, async (req, res) => {
     if (safeRepeatMode === 'weekly' && !selectedDays.length) return res.status(400).json({ success: false, error: 'Select at least one day for Every Week' });
     const sourceChanged = existing.video_id !== video_id;
     if (sourceChanged) await newRotationPreparationService.cleanup(existing);
-    await NewRotation.update(existing.id, { name, video_id, title_category_id, description: description || '', tags: tags || '', privacy: privacy || 'unlisted', category: category || '22', youtube_monetization: youtube_monetization === true ? 1 : 0, youtube_channel_id: youtube_channel_id || null, youtube_playlist_id: youtube_playlist_id || null, disable_used_titles: disable_used_titles === true ? 1 : 0, disable_used_thumbnails: disable_used_thumbnails === true ? 1 : 0, ...schedule, repeat_mode: safeRepeatMode, repeat_days: selectedDays.join(','), current_title_index: 0, current_thumbnail_index: 0, ...(sourceChanged ? { preparation_status: 'pending', preparation_error: null } : {}) });
+    await NewRotation.update(existing.id, { name, video_id, title_category_id, description: description || '', tags: tags || '', privacy: privacy || 'unlisted', category: category || '22', youtube_monetization: youtube_monetization === true ? 1 : 0, unlist_replay_after_live: unlist_replay_after_live === true ? 1 : 0, youtube_channel_id: youtube_channel_id || null, youtube_playlist_id: youtube_playlist_id || null, disable_used_titles: disable_used_titles === true ? 1 : 0, disable_used_thumbnails: disable_used_thumbnails === true ? 1 : 0, ...schedule, repeat_mode: safeRepeatMode, repeat_days: selectedDays.join(','), current_title_index: 0, current_thumbnail_index: 0, ...(sourceChanged ? { preparation_status: 'pending', preparation_error: null } : {}) });
     await NewRotation.replaceThumbnails(existing.id, thumbnails);
     if (safeRepeatMode === 'weekly') await NewRotation.replaceScheduleSlots(existing.id, weeklySlots);
     if (sourceChanged) newRotationPreparationService.prepare(existing.id);
@@ -4724,6 +4747,50 @@ app.post('/api/new-rotations/:id/sync-media', isAuthenticated, async (req, res) 
     newRotationPreparationService.prepare(rotation.id);
     res.json({ success: true, message: 'Playlist media sync started' });
   } catch (error) { res.status(500).json({ success: false, error: error.message }); }
+});
+app.post('/api/new-rotations/:id/update-media-and-thumbnails', isAuthenticated, async (req, res) => {
+  try {
+    const rotation = await NewRotation.findByIdWithThumbnails(req.params.id);
+    if (!rotation || rotation.user_id !== req.session.userId) return res.status(404).json({ success: false, error: 'New Rotation not found' });
+    if (rotation.status === 'active') return res.status(400).json({ success: false, error: 'Stop the active rotation before updating media' });
+
+    // A thumbnail source is a Gallery folder.  Refresh its complete current
+    // image list without changing any other Rotation settings.
+    const folderId = rotation.thumbnails?.[0]?.folder_id;
+    if (!folderId) return res.status(400).json({ success: false, error: 'This Rotation has no Gallery thumbnail folder to update' });
+    const allVideos = await Video.findAll(req.session.userId);
+    const thumbnailIds = allVideos
+      .filter(video => video.folder_id === folderId && isImageMediaPath(video.filepath))
+      .map(video => video.id);
+    if (!thumbnailIds.length) return res.status(400).json({ success: false, error: 'The selected Gallery folder has no image thumbnails' });
+    await NewRotation.replaceThumbnails(rotation.id, thumbnailIds);
+
+    let playlistChanges = null;
+    let needsAudioValidation = false;
+    if (String(rotation.video_id).startsWith('playlist:')) {
+      const playlistId = rotation.video_id.slice(9);
+      const playlist = await Playlist.findByIdWithVideos(playlistId);
+      needsAudioValidation = (playlist?.audios || []).some(audio => !['ready', 'problem'].includes(audio.audio_health_status || 'unknown'));
+      const changes = await newRotationPreparationService.markPlaylistChanges(playlistId);
+      playlistChanges = changes.find(change => change.rotationId === rotation.id) || null;
+      if (playlistChanges || needsAudioValidation) {
+        await NewRotation.update(rotation.id, { preparation_status: 'pending', preparation_error: null });
+        newRotationPreparationService.prepare(rotation.id);
+      }
+    }
+
+    const syncMessage = playlistChanges
+      ? ` Playlist sync started: ${playlistChanges.newCount} new, ${playlistChanges.removedCount} removed.`
+      : needsAudioValidation
+        ? ' Audio validation started in Preparing; live start will not wait for the playlist check.'
+      : String(rotation.video_id).startsWith('playlist:')
+        ? ' Playlist is already up to date.'
+        : ' This Rotation uses one Gallery video, so no playlist sync is needed.';
+    res.json({ success: true, thumbnailCount: thumbnailIds.length, playlistChanges, message: `Thumbnails updated: ${thumbnailIds.length} images.${syncMessage}` });
+  } catch (error) {
+    console.error('Update New Rotation media and thumbnails error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 app.post('/api/new-rotations/:id/rebuild-ready-media', isAuthenticated, async (req, res) => {
   try {

@@ -23,6 +23,150 @@ const failedRotationStarts = new Map();
 const loggedAlreadyRunning = new Set();
 const loggedScheduleInfo = new Set();
 
+const YOUTUBE_BIND_RETRY_DELAYS_MS = [0, 3000, 8000, 15000];
+// The replay video can take a few seconds to become writable after the
+// broadcast transitions to `complete`.  Do not make the scheduler wait for
+// this, but keep trying the *same* archive video in the background.
+const REPLAY_UNLIST_RETRY_DELAYS_MS = [15000, 60000, 180000];
+const REPLAY_PLAYLIST_RETRY_DELAYS_MS = [15000, 60000, 180000];
+
+function isTemporaryYouTubeError(error) {
+  const status = Number(error?.code || error?.response?.status);
+  if ([408, 429, 500, 502, 503, 504].includes(status)) return true;
+  return ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN'].includes(error?.code);
+}
+
+function wait(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+function describeYouTubeError(error) {
+  const status = error?.code || error?.response?.status;
+  const reason = error?.response?.data?.error?.errors?.[0]?.reason;
+  return [status, reason, error?.message].filter(Boolean).join(' · ') || 'Unknown YouTube API error';
+}
+
+function canRetryReplayPrivacyUpdate(error) {
+  const status = Number(error?.code || error?.response?.status);
+  const reason = error?.response?.data?.error?.errors?.[0]?.reason;
+  return [404, 408, 429, 500, 502, 503, 504].includes(status) ||
+    ['videoNotFound', 'backendError', 'internalError', 'rateLimitExceeded'].includes(reason);
+}
+
+// A live broadcast ID is also the ID of its completed replay video.  The
+// actual visibility shown on YouTube is a property of `videos`, not merely
+// the liveBroadcast resource.  Updating videos.status is therefore the
+// authoritative step for an archive/replay.
+async function makeReplayUnlisted(youtube, broadcastId, attempt = 0) {
+  try {
+    await youtube.videos.update({
+      part: ['status'],
+      requestBody: {
+        id: broadcastId,
+        status: { privacyStatus: 'unlisted' }
+      }
+    });
+
+    const verification = await youtube.videos.list({
+      part: ['status'],
+      id: [broadcastId]
+    });
+    const actualPrivacy = verification.data.items?.[0]?.status?.privacyStatus;
+    if (actualPrivacy !== 'unlisted') {
+      throw new Error(`YouTube returned replay privacy "${actualPrivacy || 'unknown'}" after update`);
+    }
+    console.log(`[RotationService] Changed completed replay ${broadcastId} to Unlisted`);
+    return true;
+  } catch (error) {
+    const details = describeYouTubeError(error);
+    const retryDelay = REPLAY_UNLIST_RETRY_DELAYS_MS[attempt];
+    if (retryDelay !== undefined && canRetryReplayPrivacyUpdate(error)) {
+      console.warn(`[RotationService] Replay ${broadcastId} is not ready to become Unlisted (${details}). Retrying in ${Math.round(retryDelay / 1000)}s.`);
+      const retryTimer = setTimeout(() => {
+        makeReplayUnlisted(youtube, broadcastId, attempt + 1).catch(() => {});
+      }, retryDelay);
+      retryTimer.unref?.();
+      return false;
+    }
+    console.error(`[RotationService] Failed to change replay ${broadcastId} to Unlisted: ${details}`);
+    return false;
+  }
+}
+
+// A live broadcast has a video ID as soon as it is created. Add that video to
+// the selected playlist as soon as FFmpeg is genuinely live, so it is visible
+// in YouTube Studio during the live instead of only after it becomes a replay.
+async function addBroadcastToRotationPlaylist(youtube, rotation, broadcastId, attempt = 0) {
+  if (!rotation.youtube_playlist_id || !rotation.id) return false;
+
+  const NewRotation = require('../models/NewRotation');
+  const existing = await NewRotation.playlistEntryExists(rotation.id, broadcastId);
+  if (existing) return true;
+
+  try {
+    await youtube.playlistItems.insert({
+      part: ['snippet'],
+      requestBody: {
+        snippet: {
+          playlistId: rotation.youtube_playlist_id,
+          resourceId: { kind: 'youtube#video', videoId: broadcastId }
+        }
+      }
+    });
+    await NewRotation.markPlaylistEntry(rotation.id, broadcastId, rotation.youtube_playlist_id);
+    console.log(`[RotationService] Added live ${broadcastId} to YouTube playlist ${rotation.youtube_playlist_id}`);
+    return true;
+  } catch (error) {
+    const details = describeYouTubeError(error);
+    const retryDelay = REPLAY_PLAYLIST_RETRY_DELAYS_MS[attempt];
+    if (retryDelay !== undefined && canRetryReplayPrivacyUpdate(error)) {
+      console.warn(`[RotationService] Could not add live ${broadcastId} to YouTube playlist yet (${details}). Retrying in ${Math.round(retryDelay / 1000)}s.`);
+      const retryTimer = setTimeout(() => {
+        addBroadcastToRotationPlaylist(youtube, rotation, broadcastId, attempt + 1).catch(() => {});
+      }, retryDelay);
+      retryTimer.unref?.();
+      return false;
+    }
+    console.error(`[RotationService] Failed to add live ${broadcastId} to YouTube playlist ${rotation.youtube_playlist_id}: ${details}`);
+    return false;
+  }
+}
+
+// liveBroadcasts.bind is safe to retry: it only joins the same two YouTube
+// resources and never creates another broadcast or another RTMP stream.
+async function bindYouTubeBroadcastWithRetry(youtube, broadcastId, liveStreamId) {
+  let lastError = null;
+  for (let attempt = 0; attempt < YOUTUBE_BIND_RETRY_DELAYS_MS.length; attempt++) {
+    const delay = YOUTUBE_BIND_RETRY_DELAYS_MS[attempt];
+    if (delay) await wait(delay);
+    try {
+      await youtube.liveBroadcasts.bind({
+        part: ['id', 'contentDetails'],
+        id: broadcastId,
+        streamId: liveStreamId
+      });
+      if (attempt) console.log(`[RotationService] YouTube bind recovered on attempt ${attempt + 1} for broadcast ${broadcastId}`);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isTemporaryYouTubeError(error) || attempt === YOUTUBE_BIND_RETRY_DELAYS_MS.length - 1) throw error;
+      const nextDelay = YOUTUBE_BIND_RETRY_DELAYS_MS[attempt + 1];
+      console.warn(`[RotationService] YouTube bind temporarily unavailable for broadcast ${broadcastId} (attempt ${attempt + 1}/${YOUTUBE_BIND_RETRY_DELAYS_MS.length}). Retrying in ${Math.round(nextDelay / 1000)}s.`);
+    }
+  }
+  throw lastError;
+}
+
+async function cleanupUnboundYouTubeResources(youtube, broadcastId, liveStreamId) {
+  // Neither resource has been sent to FFmpeg yet. Removing them prevents
+  // failed retries from accumulating scheduled/empty lives in YouTube Studio.
+  await Promise.allSettled([
+    youtube.liveBroadcasts.delete({ id: broadcastId }),
+    youtube.liveStreams.delete({ id: liveStreamId })
+  ]);
+  console.warn(`[RotationService] Removed unbound YouTube resources after failed bind for broadcast ${broadcastId}`);
+}
+
 function formatLocalDateTime(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -375,11 +519,12 @@ async function startRotationStream(rotation, item) {
 
     const liveStream = streamResponse.data;
 
-    await youtube.liveBroadcasts.bind({
-      part: ['id', 'contentDetails'],
-      id: broadcast.id,
-      streamId: liveStream.id
-    });
+    try {
+      await bindYouTubeBroadcastWithRetry(youtube, broadcast.id, liveStream.id);
+    } catch (bindError) {
+      await cleanupUnboundYouTubeResources(youtube, broadcast.id, liveStream.id);
+      throw bindError;
+    }
 
     const rtmpUrl = liveStream.cdn.ingestionInfo.ingestionAddress;
     const streamKey = liveStream.cdn.ingestionInfo.streamName;
@@ -471,6 +616,11 @@ async function startRotationStream(rotation, item) {
       };
     }
 
+    // Do not add a scheduled/failed broadcast to the playlist. At this point
+    // FFmpeg has started successfully, so the item represents the live that
+    // viewers see in YouTube Studio.
+    await addBroadcastToRotationPlaylist(youtube, rotation, broadcast.id);
+
     return { success: true, streamId: stream.id, broadcastId: broadcast.id };
   } catch (error) {
     console.error('[RotationService] Error starting rotation stream:', error);
@@ -536,23 +686,21 @@ async function stopRotationStream(rotation, item) {
               broadcastStatus: 'complete'
             });
 
+            // A New Rotation can be public while live, then keep only its replay
+            // accessible by link once YouTube has completed the broadcast.
+            if (Number(rotation.unlist_replay_after_live) === 1) {
+              // Do this after `complete`; YouTube can briefly return 404 while
+              // it creates the replay video, so the helper retries without
+              // delaying the next scheduled rotation.
+              await makeReplayUnlisted(youtube, rotationStream.youtube_broadcast_id);
+            }
+
             // New Rotations can archive each completed live into a chosen YouTube playlist.
             if (rotation.youtube_playlist_id) {
-              const NewRotation = require('../models/NewRotation');
-              const alreadyAdded = await NewRotation.playlistEntryExists(rotation.id, rotationStream.youtube_broadcast_id);
-              if (!alreadyAdded) {
-                await youtube.playlistItems.insert({
-                  part: ['snippet'],
-                  requestBody: {
-                    snippet: {
-                      playlistId: rotation.youtube_playlist_id,
-                      resourceId: { kind: 'youtube#video', videoId: rotationStream.youtube_broadcast_id }
-                    }
-                  }
-                });
-                await NewRotation.markPlaylistEntry(rotation.id, rotationStream.youtube_broadcast_id, rotation.youtube_playlist_id);
-                console.log(`[RotationService] Added completed live ${rotationStream.youtube_broadcast_id} to YouTube playlist ${rotation.youtube_playlist_id}`);
-              }
+              // Normally this has already happened when the live started.
+              // Keeping this call makes the end-of-live path a safe fallback
+              // for a temporary YouTube playlist API failure.
+              await addBroadcastToRotationPlaylist(youtube, rotation, rotationStream.youtube_broadcast_id);
             }
           }
         } catch (ytError) {
